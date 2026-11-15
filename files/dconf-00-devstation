@@ -1,0 +1,19 @@
+# System-wide GNOME defaults for gnome-devstation.
+#
+# Compiled by `dconf update` during %post into /etc/dconf/db/local and read
+# through /etc/dconf/profile/user (system-db:local). This is how the two
+# extensions are active at the very first login, before any user database
+# exists.
+#
+# Nothing is locked. The user database (~/.config/dconf/user) has higher
+# priority, so Extension Manager and the Shell itself can change these keys
+# later — this is a starting point, not a policy.
+
+[org/gnome/shell]
+enabled-extensions=['caffeine@patapon.info','appindicatorsupport@rgcjonas.gmail.com']
+
+[org/gnome/shell/extensions/caffeine]
+# Caffeine stays enabled and remembers its own toggle state. user-enabled is
+# NOT set: the extension does not inhibit suspend or blanking until the user
+# turns the coffee cup on in Quick Settings.
+restore-state=true
