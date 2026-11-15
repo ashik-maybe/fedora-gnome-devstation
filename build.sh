@@ -38,8 +38,7 @@ offline_iso="out/${name}-${release}-${arch}-offline.iso"
 # the kickstart checks the installed system; this checks the ISO before it is
 # built, which is cheaper than finding out after a 15-minute install.
 expect_absent="firefox libreoffice-core gnome-boxes gnome-software gnome-tour
-helium-bin helix nvidia-gpu-firmware amd-gpu-firmware alsa-sof-firmware
-gnome-calendar seahorse baobab"
+helium-bin helix gnome-calendar seahorse baobab"
 
 die() {
 	echo "build: $*" >&2

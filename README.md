@@ -438,8 +438,8 @@ package tree must not contain the trimmed applications. Finding that out after a
 
 ## Building
 
-Everything goes through `build.sh`; `just` and the GitHub workflow are thin
-wrappers around it.
+Everything goes through `build.sh`; `just` is a thin wrapper around it, and the
+GitHub workflow only validates the kickstart.
 
 ```bash
 ./build.sh deps       # lorax, pykickstart, xorriso, isomd5sum, podman
@@ -452,6 +452,18 @@ wrappers around it.
 
 With `just`, the same steps are `just fetch-base`, `just build`,
 `just build-offline`, `just packages`, `just check`.
+
+### What a local build needs
+
+- a Linux host — Fedora preferred, but any Linux with podman works, because the
+  package resolution runs in a `fedora:$FEDORA_RELEASE` container
+- ~14 GB of free disk for the offline ISO (~900 MB netinst, ~2 GB package tree,
+  ~3 GB output, plus scratch)
+- network access on the first build
+- `sudo`, for `./build.sh deps` and the single `mkksiso` step
+
+`out/`, `packages/`, `cache/` and `build/` are git-ignored; a clone builds as
+is, and the offline tree re-resolves itself whenever the kickstart changes.
 
 Build a different release:
 
@@ -471,8 +483,11 @@ owned by your user. On a machine without `mkksiso`, run `./build.sh deps` once.
 
 The offline package tree is resolved inside a
 `registry.fedoraproject.org/fedora:$FEDORA_RELEASE` container, so a Fedora 44
-laptop can still build a correct Fedora 45 image. Set `BUILD_IMAGE=none` when you
-are already inside a container of the target release — that is what CI does.
+laptop can still build a correct Fedora 45 image, and the resolver's RPM Fusion
+release packages stay out of your system. Leave `BUILD_IMAGE` unset on a normal
+host; `BUILD_IMAGE=none` is only for when you are already inside a disposable
+container of the target release (it runs the resolver against the running
+system).
 
 ## What an offline build actually does
 
@@ -507,15 +522,15 @@ scripts/expand-packages.py      comps + %packages -> explicit package list.
 scripts/resolve-packages.sh     Downloads that list into packages/.
 scripts/make-offline-ks.py      Writes the offline ISO's kickstart.
 justfile                        Thin wrappers around build.sh.
-.github/workflows/              Validation on push, offline ISO on demand.
+.github/workflows/              Kickstart validation on push and PR.
 ```
 
-Two notes on the workflow, since GitHub's free tier is the reason both
-repositories are public: Actions minutes are unlimited for public repositories,
-and the build job is `workflow_dispatch` only because it produces a 2.9 GB
-artifact. Validation runs on every push and costs seconds. The build runs in a
-`docker run --privileged` container rather than a `container:` job, because the
-EFI step needs loop devices.
+One note on CI: the GitHub workflow only runs the kickstart check on push and
+pull request, and nothing else. It never downloads the netinst, never builds an
+ISO, and never stores an artifact. The ISOs are built on the machine that will
+install them, which is also what keeps the image out of public artifact
+storage: it embeds third-party packages (Chrome, RPM Fusion nonfree, vendor
+firmware blobs) whose redistribution terms are not ours to grant.
 
 ## Troubleshooting
 
