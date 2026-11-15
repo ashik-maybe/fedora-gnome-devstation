@@ -38,11 +38,11 @@ is missing:
 
 | | Stock `@workstation-product-environment` | This image |
 | --- | --- | --- |
-| Packages installed | 1853 | **1564** |
-| Download | ~2 GiB | **~1.5 GiB** |
+| Packages installed | 1853 | **1566** |
+| Download | ~2 GiB | **~1 GiB** |
 | Installed size | ~6 GiB | **~5 GiB** |
 
-289 fewer packages. Helium, if you add it later, is ~415 MB plus a Qt5 stack
+287 fewer packages. Helium, if you add it later, is ~415 MB plus a Qt5 stack
 that this image does not otherwise carry.
 
 ## Hardware target
@@ -415,7 +415,7 @@ release — that is what CI does.
    else, `%post` included, is shared with the online image.
 
 The result is verified before packaging: resolving the list against only
-`file://…/packages` must succeed with zero problems. On Fedora 45 that is 1564
+`file://…/packages` must succeed with zero problems. On Fedora 45 that is 1566
 packages, and the transaction is byte-for-byte what an online install would
 fetch.
 
