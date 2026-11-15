@@ -25,22 +25,24 @@ It is **not** a minimal install and not a tuned image:
   no `/etc/environment.d` pin, no `zram-generator.conf`, no `%post` tuning.
 - Bash stays the login shell. No zsh, no shell replacement.
 
-The base is the **Fedora Everything netinst**, not the Workstation live ISO,
-because the netinst installs from live repositories. An ISO built in January
-installs June's packages, and the image is a kickstart plus a handful of
-kilobytes of configuration.
+The base is the **Fedora Everything netinst**, not the Workstation live ISO.
+The online ISO installs from live repositories, so an ISO built in January
+installs June's packages. The offline ISO embeds the resolved package set and
+installs exactly that, which is the point of it.
 
 ## Measured size, not marketing size
 
-Resolution tested with `dnf --assumeno install` against Fedora 45 x86_64:
+Resolution tested with `dnf --installroot` against Fedora 45 x86_64, so it counts
+what an install actually puts on the disk rather than what a development machine
+is missing:
 
 | | Stock `@workstation-product-environment` | This image |
 | --- | --- | --- |
-| Packages installed | 1612 | **1326** |
-| Download | ~2 GiB | **~1 GiB** |
+| Packages installed | 1853 | **1564** |
+| Download | ~2 GiB | **~1.5 GiB** |
 | Installed size | ~6 GiB | **~5 GiB** |
 
-286 fewer packages. Helium, if you add it later, is ~415 MB plus a Qt5 stack
+289 fewer packages. Helium, if you add it later, is ~415 MB plus a Qt5 stack
 that this image does not otherwise carry.
 
 ## Hardware target
@@ -160,13 +162,19 @@ Flatpak tray icons in the GNOME top bar.
 
 Full RPM Fusion stack, preinstalled:
 
-`ffmpeg` (swapped in `%post`, see below) · `vlc` · `vlc-plugins-freeworld` ·
+`ffmpeg` · `vlc` · `vlc-plugins-freeworld` ·
 `gstreamer1-plugins-bad-freeworld` · `gstreamer1-plugins-ugly` (H.264 encoder) ·
 `gstreamer1-plugins-ugly-free` · `gstreamer1-plugin-libav` ·
 `gstreamer1-plugin-openh264` · `gstreamer1-plugin-dav1d` ·
 `libva-intel-driver` (i965) ·
 `libva-intel-media-driver` (iHD) · `libva-utils` · `libheif-freeworld` ·
 `unrar`
+
+`ffmpeg` is an ordinary `%packages` entry, not a post-install swap. RPM Fusion's
+`ffmpeg-libs` satisfies every `libavcodec`/`libavformat` requirement in the
+transaction, so `ffmpeg-free` is never selected and the whole set resolves in
+one pass. That matters for more than tidiness: it is what lets the offline ISO
+install without a reachable repository.
 
 The GStreamer VA-API plugin needs no extra package: `libgstva.so` ships inside
 `gstreamer1-plugins-bad-free`, which is why `gstreamer1-vaapi` only exists as a
@@ -243,16 +251,29 @@ to LVFS, so firmware updates work without a Windows dual boot.
 
 ## Install
 
-**Requirements:** x86_64 machine (written for an 840 G3), wired or wireless
-network during install, a USB stick of at least 2 GB.
+Two ISOs come out of this repository. They install the same system; they differ
+only in where the packages come from.
+
+| ISO | Size | Install needs network | Built by |
+| --- | --- | --- | --- |
+| `…-45-x86_64.iso` | ~1.3 GB | yes | `./build.sh online` |
+| `…-45-x86_64-offline.iso` | ~2.7 GB | **no** | `./build.sh offline` |
+
+Both fit a 4 GB USB stick.
+
+**Requirements:** x86_64 machine (written for an 840 G3), a USB stick of at
+least 4 GB, and — for the online ISO only — wired or wireless network during
+install.
 
 1. Write the ISO to USB:
    ```bash
-   sudo dd if=out/gnome-devstation-45-x86_64.iso of=/dev/sdX bs=4M status=progress oflag=sync
+   sudo dd if=out/gnome-devstation-45-x86_64-offline.iso of=/dev/sdX \
+     bs=4M status=progress oflag=sync
    ```
 2. Boot it. The Fedora graphical installer starts with this kickstart applied.
 3. **Language / keyboard** — as usual.
-4. **Installation source** — already configured; needs network access.
+4. **Installation source** — already configured. The offline ISO points at a
+   package repository embedded in the ISO itself.
 5. **Software selection** — pre-filled and locked. This is the image.
 6. **Installation destination** — your disk, your partitioning, your encryption.
 7. **User creation** — your name and password.
@@ -261,6 +282,26 @@ network during install, a USB stick of at least 2 GB.
 Partitioning, `rootpw` and user creation are deliberately not in the kickstart.
 If they were, Anaconda would install unattended and you would never see the GUI.
 Leaving them out is what keeps the installer interactive.
+
+### What "offline" does and does not cover
+
+The offline ISO embeds the resolved RPM closure (~1.5 GB) as a `createrepo_c`
+repository, and the generated kickstart installs from
+`file:///run/install/repo/packages`. No mirror is contacted at any point: the
+RPM Fusion release packages and the Chrome signing key are shipped on the ISO
+too, so `%post` does not download anything either.
+
+Two things still need a network, and the build says so out loud:
+
+- **Flatpaks** (Flatseal, Extension Manager) are skipped during an offline
+  install, with a warning. Install them after first boot with
+  `flatpak install flathub …` once you are online; the Flathub remote is only
+  added by the online ISO.
+- **Updates** obviously need one. Immediately after an offline install your
+  system is the package set that was current when the ISO was built.
+
+Everything else — the desktop, the codecs, the browser, the toolchain — is on
+the ISO.
 
 ## First boot
 
@@ -287,7 +328,8 @@ fwupdmgr get-devices
 away from the image:
 
 - required packages present: `gnome-shell`, `gdm`, both extensions, Chrome,
-  `libva-intel-media-driver`, `iwlwifi-mvm-firmware`, `tuned-ppd`, `bash`
+  `libva-intel-media-driver`, `iwlwifi-mvm-firmware`, `tuned-ppd`, `bash`,
+  `ffmpeg`, both RPM Fusion release packages
 - trimmed packages absent: Firefox, LibreOffice, GNOME Boxes, GNOME Software,
   `gnome-tour`, Maps, Weather, `rygel`, remote desktop, Helium, `helix`,
   NVIDIA/AMD firmware, `alsa-sof-firmware`
@@ -297,36 +339,65 @@ away from the image:
 - `google-chrome.desktop` exists and is the `https` handler
 - the bash profile passes `bash -n`
 
+The `build.sh` side has one more gate, before the ISO is built: the resolved
+package tree must not contain the trimmed applications. Finding that out after a
+15-minute install is worse than failing the build.
+
 ## Building
 
+Everything goes through `build.sh`; `just` and the GitHub workflow are thin
+wrappers around it.
+
 ```bash
-just deps        # lorax, pykickstart, xorriso, isomd5sum
-just fetch-base  # download the Fedora Everything netinst ISO
-just build       # produce out/gnome-devstation-<release>-x86_64.iso
-just check       # validate the kickstart only
+./build.sh deps       # lorax, pykickstart, xorriso, isomd5sum, podman
+./build.sh base       # netinst ISO + RPM Fusion release RPMs + keys + comps
+./build.sh online     # out/gnome-devstation-45-x86_64.iso          (~1.3 GB)
+./build.sh offline    # out/gnome-devstation-45-x86_64-offline.iso  (~2.7 GB)
+./build.sh packages   # just resolve the package tree (packages/, ~1.5 GB)
+./build.sh check      # kickstart validation only
 ```
+
+With `just`, the same steps are `just fetch-base`, `just build`,
+`just build-offline`, `just packages`, `just check`.
 
 Build a different release:
 
 ```bash
-FEDORA_RELEASE=46 just fetch-base build
+FEDORA_RELEASE=46 ./build.sh base
+FEDORA_RELEASE=46 ./build.sh offline
 ```
 
 `$releasever` and `$basearch` flow through the kickstart repo definitions, so a
-release bump is one variable.
+release bump is one variable. `./build.sh base` keeps an ISO it already has;
+`REFRESH=1 ./build.sh base` looks for a newer point release.
 
-### Why `%post` does the ffmpeg swap
+`mkksiso` rebuilds the ISO's EFI boot image with `mkfs.vfat`, which needs a loop
+device and therefore root. `build.sh` elevates **only that command** and gives
+the resulting file back to you; downloads, the package tree and `out/` stay
+owned by your user. On a machine without `mkksiso`, run `./build.sh deps` once.
 
-A kickstart `%packages` section cannot express `--allowerasing`, and RPM
-Fusion's `ffmpeg` conflicts with Fedora's `ffmpeg-free`. So the swap runs after
-the install, where dnf can do it properly:
+The offline package tree is resolved inside a `registry.fedoraproject.org/fedora:$FEDORA_RELEASE`
+container, so a Fedora 44 laptop can still build a correct Fedora 45 image. Set
+`BUILD_IMAGE=none` when you are already inside a container of the target
+release — that is what CI does.
 
-```bash
-dnf swap -y ffmpeg-free ffmpeg --allowerasing
-```
+### What an offline build actually does
 
-The build warns instead of failing if that step cannot reach the network.
-Playback works either way; the swap buys encoders and full codec coverage.
+1. `cache/comps.xml` expands `@^workstation-product-environment` and the
+   `-@group` removals into an explicit list, using the same rules Anaconda uses.
+2. `dnf install --installroot=<empty> --downloadonly` resolves that list against
+   live Fedora, RPM Fusion, Chrome and Helium repositories, and downloads the
+   whole closure. An empty rpmdb is what makes the result an installed set
+   rather than a delta against your laptop.
+3. `createrepo_c` indexes `packages/`, which is then added to the ISO root.
+4. The kickstart is copied with two edits: the remote `repo` lines become the
+   embedded repository, and `%packages` becomes the resolved list. Everything
+   else, `%post` included, is shared with the online image.
+
+The result is verified before packaging: resolving the list against only
+`file://…/packages` must succeed with zero problems. On Fedora 45 that is 1564
+packages, and the transaction is byte-for-byte what an online install would
+fetch.
 
 ## Project layout
 
@@ -337,9 +408,20 @@ files/dconf-profile-user        dconf profile: user db + system db.
 files/dconf-00-devstation       Pre-enables Caffeine and appindicator.
 repos/google-chrome.repo        Shipped to /etc/yum.repos.d.
 repos/helium-copr.repo          Shipped, enabled, Helium not installed.
-justfile                        Local build entry points.
-.github/workflows/              CI kickstart validation and ISO build.
+build.sh                        All build entry points, online and offline.
+scripts/expand-packages.py      comps + %packages -> explicit package list.
+scripts/resolve-packages.sh     Downloads that list into packages/.
+scripts/make-offline-ks.py      Writes the offline ISO's kickstart.
+justfile                        Thin wrappers around build.sh.
+.github/workflows/              Validation on push, offline ISO on demand.
 ```
+
+Two notes on the workflow, since GitHub's free tier is the reason both
+repositories are public: Actions minutes are unlimited for public repositories,
+and the build job is `workflow_dispatch` only because it produces a 2.7 GB
+artifact. Validation runs on every push and costs seconds. The build runs in a
+`docker run --privileged` container rather than a `container:` job, because the
+EFI step needs loop devices.
 
 ## License
 
