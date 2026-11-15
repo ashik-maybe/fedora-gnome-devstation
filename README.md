@@ -1,7 +1,10 @@
 # gnome-devstation
 
-Fedora Workstation, trimmed to a developer laptop, with the media stack Fedora
-leaves out and the small bash improvements you would otherwise add by hand.
+A Fedora 45 GNOME desktop image for developers, built from the Fedora Everything
+netinst with `mkksiso` and a kickstart. It ships the full GNOME session, the
+media stack Fedora leaves out, a developer toolchain, and — as of this version —
+every firmware package and driver Fedora offers, so it boots on whatever machine
+it lands on.
 
 No themes. No dotfiles. No kernel arguments. No custom `sysctl` files. If
 upstream GNOME or Fedora changes a default, this image inherits the change
@@ -9,11 +12,27 @@ instead of fighting it.
 
 ---
 
+## Contents
+
+1. [What this is (and is not)](#what-this-is-and-is-not)
+2. [What is in the image](#what-is-in-the-image)
+3. [Hardware support](#hardware-support)
+4. [What was removed](#what-was-removed)
+5. [AppImage support](#appimage-support)
+6. [Install](#install)
+7. [First boot](#first-boot)
+8. [Verification gates](#verification-gates)
+9. [Building](#building)
+10. [What an offline build actually does](#what-an-offline-build-actually-does)
+11. [Project layout](#project-layout)
+12. [Troubleshooting](#troubleshooting)
+13. [License](#license)
+
 ## What this is (and is not)
 
 It is the **Fedora Workstation environment group**, minus the applications
-nobody uses on a development machine, plus a toolchain and RPM Fusion's codec
-packages.
+nobody uses on a development machine, plus a toolchain, RPM Fusion's codec
+packages, and every firmware package.
 
 It is **not** a minimal install and not a tuned image:
 
@@ -38,38 +57,207 @@ is missing:
 
 | | Stock `@workstation-product-environment` | This image |
 | --- | --- | --- |
-| Packages installed | 1853 | **1566** |
-| Download | ~2 GiB | **~1 GiB** |
-| Installed size | ~6 GiB | **~5 GiB** |
+| Packages installed | 1855 | **1676** |
+| Download | ~2 GiB | ~2 GiB |
+| Installed size | ~6 GiB | ~6 GiB |
 
-287 fewer packages. Helium, if you add it later, is ~415 MB plus a Qt5 stack
-that this image does not otherwise carry.
+179 fewer packages, and the difference is entirely applications: the firmware,
+kernel, toolchain and codec stack are all in. Helium, if you add it later, is
+~415 MB plus a Qt5 stack that this image does not otherwise carry.
 
-## Hardware target
+## What is in the image
 
-Written for an **HP EliteBook 840 G3**: Skylake i5-6300U, Intel HD 520, Intel
-8260 Wi-Fi/Bluetooth, Intel HDA audio, no discrete GPU, no optical drive.
+### Session
 
-That is why the firmware list is Intel-only. Everything else — AMD, NVIDIA,
-Broadcom, Realtek, MediaTek, Qualcomm, older Intel wireless — is excluded:
+Full GNOME 51 on Fedora 45: `gnome-shell`, `gdm`, `nautilus`, `ptyxis`,
+`gnome-text-editor`, `papers`, `loupe`, `file-roller`, `gnome-initial-setup`,
+`gnome-control-center`, `evolution-data-server` (hard dependency of
+`gnome-shell`), and the whole `@desktop-accessibility` group.
+
+Two extensions are preinstalled and enabled before the first login through a
+system dconf database:
+
+- `gnome-shell-extension-caffeine` (v61) — keeps the screen awake when you want
+  it to. Enabled but **not inhibiting**: `restore-state=true` only remembers
+  whether you turned it on. Suspend and blanking behave normally until you click
+  the coffee cup.
+- `gnome-shell-extension-appindicator` (v66) — puts Steam, Slack, Discord and
+  Flatpak tray icons in the top bar.
+
+Both are Fedora packages that declare shell 45–51. Nothing is locked: Extension
+Manager shows them as system extensions, and your own `~/.config/dconf/user`
+takes priority as soon as you toggle anything.
+
+### Developer toolchain
+
+`git` `gh` `just` `gitui` `ripgrep` `fd-find` `bat` `eza` `fzf` `zoxide`
+`direnv` `jq` `yq` `tmux` `gcc` `make` `pkgconf` `python3` `python3-pip`
+`python3-devel` `nodejs24` `podman` `podman-compose` `shellcheck` `btop`
+`strace` `lsof` `7zip`
+
+Quality of life: `wl-clipboard` `sshfs` `git-lfs` `ncdu` `poppler-utils` `duf`
+
+Deliberately absent: C/C++ extras beyond `gcc`/`make`, Rust, Go, Java, database
+servers, Kubernetes tooling. `uv` and everything else Python-related beyond
+`pip`/`devel` is left to the user.
+
+### Media and codecs
+
+Full RPM Fusion stack, preinstalled:
+
+`ffmpeg` · `vlc` · `vlc-plugins-freeworld` ·
+`gstreamer1-plugins-bad-freeworld` · `gstreamer1-plugins-ugly` (H.264 encoder) ·
+`gstreamer1-plugins-ugly-free` · `gstreamer1-plugin-libav` ·
+`gstreamer1-plugin-openh264` · `gstreamer1-plugin-dav1d` ·
+`libva-intel-driver` (i965) ·
+`libva-intel-media-driver` (iHD) · `libva-utils` · `libheif-freeworld` ·
+`mesa-va-drivers-freeworld` (AMD hardware decode) · `unrar`
+
+`ffmpeg` is an ordinary `%packages` entry, not a post-install swap. RPM Fusion's
+`ffmpeg-libs` satisfies every `libavcodec`/`libavformat` requirement in the
+transaction, so `ffmpeg-free` is never selected and the whole set resolves in
+one pass. That matters for more than tidiness: it is what lets the offline ISO
+install without a reachable repository.
+
+The GStreamer VA-API plugin needs no extra package: `libgstva.so` ships inside
+`gstreamer1-plugins-bad-free`, which is why `gstreamer1-vaapi` only exists as a
+virtual provide.
+
+The `-freeworld` packages are **additive** on Fedora 45, not replacements:
+verified with `repoquery`, they declare no `Conflicts` and share no plugin files
+with their `-free` counterparts. `libheif-freeworld` only ships the
+HEVC/AV1/x264/x265 codec plugins and pulls Fedora's `libheif` in as a hard
+dependency.
+
+`libdvdcss` is **not available** for Fedora 45 in RPM Fusion, so encrypted DVD
+playback is impossible. Unencrypted DVD media still decodes through
+`dvdread`/`dvdnav` in `ugly-free`.
+
+### Browser
+
+**Google Chrome** is installed and is the default handler for `http`, `https`,
+`text/html` and `application/xhtml+xml`.
+
+Helium's COPR is configured but Helium is not installed:
+
+```bash
+sudo dnf install helium-bin
+```
+
+Helium is Chromium-based without Google services, but it is beta, has no
+Widevine (so no Netflix/Spotify web), and pulls a Qt5 stack that this image does
+not otherwise install. Chrome is the safer default; the repo is there when you
+want to try the other one.
+
+### Firmware and drivers
+
+This is the catch-all part. Every firmware package Fedora ships is installed,
+so the image does not assume which hardware it lands on:
 
 ```
--amd-gpu-firmware      -nvidia-gpu-firmware    -atheros-firmware
--brcmfmac-firmware     -realtek-firmware       -mt7xxx-firmware
--nxpwireless-firmware  -qcom-wwan-firmware     -tiwilink-firmware
--libertas-firmware     -iwlegacy-firmware      -iwlwifi-dvm-firmware
--b43-fwcutter          -b43-openfwwf           -cirrus-audio-firmware
--alsa-sof-firmware     -intel-vsc-firmware     -amd-ucode-firmware
+alsa-sof-firmware      intel-audio-firmware   cirrus-audio-firmware
+amd-gpu-firmware       amd-ucode-firmware     intel-gpu-firmware
+nvidia-gpu-firmware    atheros-firmware       brcmfmac-firmware
+realtek-firmware       mt7xxx-firmware        nxpwireless-firmware
+qcom-wwan-firmware     tiwilink-firmware      libertas-firmware
+iwlegacy-firmware      iwlwifi-dvm-firmware   iwlwifi-mvm-firmware
+iwlbluetooth-firmware  intel-vsc-firmware     linux-firmware
+wireless-regdb
 ```
 
-Kept: `intel-gpu-firmware` (Skylake DMC), `iwlwifi-mvm-firmware` (ships
-`iwlwifi-8000C` for the 8260), `iwlbluetooth-firmware` (`ibt-11-5`),
-`intel-audio-firmware`, `microcode_ctl`, and `linux-firmware` itself for the
-wireless regulatory database.
+`linux-firmware` stays regardless: it carries the wireless regulatory database
+the kernel reads at boot, and it is a dependency of the vendor packages above.
 
-The image still installs and boots on other hardware; it just will not bring up
-a non-Intel Wi-Fi card or GPU without one `dnf install`. That is the trade for
-191 MB of blobs this machine cannot use.
+The NVIDIA driver is `akmod-nvidia` from RPM Fusion, which builds the kernel
+module at install time and rebuilds on every kernel update. Because an offline
+ISO has no second dnf pass, the build toolchain is listed explicitly in the same
+transaction: `kernel-devel` (pinned to the kernel version the tree contains),
+`gcc`, `make`, `kernel-headers`, `glibc-devel`. A missing build dep would fail
+the install loudly instead of shipping a broken driver.
+
+`kernel-modules-extra` is also installed: it is the long tail of sensors, old
+radios, niche card readers and other devices the main module set does not carry,
+at ~3 MB.
+
+`fwupd` and `gnome-firmware` are included: HP publishes EliteBook BIOS images to
+LVFS, so firmware updates work without a Windows dual boot.
+
+`kernel` is listed explicitly, not implied. Anaconda adds a kernel by itself only
+when it can resolve one from an enabled repository; when it cannot, it logs
+`Failed to select a kernel` and carries on installing. An online install never
+notices, because Fedora's repos have one. An offline install has only the
+embedded tree, so the kernel is in the tree because the kickstart asked for it —
+and `%post` gates on `kernel` being installed, so a regression fails the install
+instead of shipping an ISO that cannot boot.
+
+### Bash, improved without a framework
+
+One file, `/etc/profile.d/90-devstation.sh`, sourced by both `/etc/profile`
+(login shells) and `/etc/bashrc` (interactive shells), with a guard so it loads
+once:
+
+- history: 100k entries, shared between windows, appended live, duplicates
+  collapsed
+- `globstar` (`**`), `direxpand`, `checkwinsize`; `autocd` deliberately off
+- case-insensitive completion, complete on the first Tab
+- fzf: `Ctrl-R` history, `Ctrl-T` file picker, `Alt-C` directory jump
+- `zoxide` (`z`, `zi`) and `direnv`
+- prompt: user@host, trimmed path, git branch, last exit status on failure
+
+`EDITOR`/`VISUAL` are **not** set, and no editor beyond `vi` (from `@core`) and
+`nano` (the distro default editor) is shipped. Set them yourself if you install
+one.
+
+### Flatpaks
+
+Preinstalled from Flathub on the online ISO:
+
+- **Flatseal** — review and change permissions for every Flatpak.
+- **Extension Manager** — the only GNOME extension manager worth using; replaces
+  `gnome-extensions-app`, `gnome-tweaks` and `dconf-editor`.
+- **Gear Lever** — AppImage browser and integrator. It talks to
+  `org.freedesktop.Flatpak` so the AppImage runs on the host, not inside the
+  sandbox, which is why `fuse` is a package here and not a side effect of the
+  Flatpak.
+
+## Hardware support
+
+The image is hardware-agnostic. It was originally written for an **HP EliteBook
+840 G3** (Skylake i5-6300U, Intel HD 520, Intel 8260 Wi-Fi/Bluetooth, Intel HDA
+audio), and that machine was scanned end to end to prove nothing is missing:
+
+| Component | Driver / module | Ships in | Blob it loads |
+| --- | --- | --- | --- |
+| HD Graphics 520 | `i915` | `kernel-modules` | `i915/skl_dmc_ver1_27.bin` — `intel-gpu-firmware` |
+| Wi-Fi 8260 (iwlmvm) | `iwlwifi`, `iwlmvm` | `kernel-modules` | `iwlwifi-8000C-36.ucode` — `iwlwifi-mvm-firmware` |
+| Bluetooth 8087:0a2b | `btusb` | `kernel-modules` | `intel/ibt-11-5.sfi`, `.ddc` — `iwlbluetooth-firmware` |
+| Audio (HDA, CX20724) | `snd_hda_intel`, `snd_hda_codec_conexant` | `kernel-modules` | none — legacy HDA uses the kernel mixer, not UCM |
+| Ethernet I219-LM | `e1000e` | `kernel-modules-core` | — |
+| Card reader RTS522A | `rtsx_pci` | `kernel-modules-core` | — |
+| Webcam (Chicony) | `uvcvideo` | `kernel-modules` | — |
+| Touchpad (Synaptics PS/2) | `psmouse` | built into the kernel | — |
+| Accelerometer LIS3LV02DL | `hp_accel`, `hp_wmi` | `kernel-modules` | — |
+| Thermal, RAPL, MEI | `intel_pch_thermal`, `coretemp`, `intel_rapl_msr`, `mei_me` | `kernel-modules-core` | — |
+| CPU microcode | — | `microcode_ctl` | `intel-ucode/06-4e-03` (Skylake-U) |
+
+Ownership was verified against which Fedora package ships each blob (not against
+a host that happens to have everything installed), and against the running
+system for the driver side: every PCI device on the board has a driver bound,
+and the kernel log records no failed firmware load. Two things the scan settled:
+
+- **Audio is legacy HDA on the 840 G3, not SOF.** `snd_intel_dspcfg` sits at
+  `dsp_driver=0` (auto), the board exposes no SOF ACPI node, and
+  `snd_hda_intel` binds the CX20724 codec with HP's own `103c:8079` fixup.
+  PipeWire reports no `api.alsa.ucm` property, so this card takes the plain
+  kernel-mixer path. `alsa-sof-firmware` is installed anyway now — it costs
+  14 MB and the image is no longer Intel-only.
+- **`kernel-modules-extra` is not needed for this laptop.** Every module above
+  lives in `kernel-modules` or `kernel-modules-core`, both of which come with
+  `kernel`. It is installed for other hardware.
+
+On any other machine: the firmware table above covers AMD, NVIDIA (nouveau),
+Broadcom, Realtek, MediaTek, Qualcomm, Atheros, old Intel wireless, Cirrus
+audio, and Intel VSC. If something is still missing, it is not a Fedora package.
 
 ## What was removed
 
@@ -132,137 +320,18 @@ The one removal that had to be reverted is documented in the kickstart:
 `gnome-shell` links `libecal` and `libedataserver` directly, so
 `evolution-data-server` is a hard dependency, not a calendar app. It stays.
 
-## What was added
+## AppImage support
 
-### Session glue and extensions
-
-`libglvnd-gles` (lost with `@firefox`; GLES-only apps break without it) ·
-`gnome-shell-extension-caffeine` · `gnome-shell-extension-appindicator`
-
-Both extensions are Fedora packages (v61 and v66, both declaring shell 45–51;
-Fedora 45 ships GNOME Shell 51) and both are enabled **before the first login**
-through a system dconf database:
-
-```
-/etc/dconf/profile/user       user-db:user, system-db:local
-/etc/dconf/db/local.d/00-devstation
-```
-
-Nothing is locked. Extension Manager shows them as system extensions, and your
-own `~/.config/dconf/user` takes priority as soon as you toggle anything.
-
-Caffeine is enabled but **not inhibiting**: `restore-state=true` only remembers
-whether you turned it on. Suspend and screen blanking behave normally until you
-click the coffee cup in Quick Settings.
-
-`gnome-shell-extension-appindicator` is what puts Steam, Slack, Discord and
-Flatpak tray icons in the GNOME top bar.
-
-### Media and codecs
-
-Full RPM Fusion stack, preinstalled:
-
-`ffmpeg` · `vlc` · `vlc-plugins-freeworld` ·
-`gstreamer1-plugins-bad-freeworld` · `gstreamer1-plugins-ugly` (H.264 encoder) ·
-`gstreamer1-plugins-ugly-free` · `gstreamer1-plugin-libav` ·
-`gstreamer1-plugin-openh264` · `gstreamer1-plugin-dav1d` ·
-`libva-intel-driver` (i965) ·
-`libva-intel-media-driver` (iHD) · `libva-utils` · `libheif-freeworld` ·
-`unrar`
-
-`ffmpeg` is an ordinary `%packages` entry, not a post-install swap. RPM Fusion's
-`ffmpeg-libs` satisfies every `libavcodec`/`libavformat` requirement in the
-transaction, so `ffmpeg-free` is never selected and the whole set resolves in
-one pass. That matters for more than tidiness: it is what lets the offline ISO
-install without a reachable repository.
-
-The GStreamer VA-API plugin needs no extra package: `libgstva.so` ships inside
-`gstreamer1-plugins-bad-free`, which is why `gstreamer1-vaapi` only exists as a
-virtual provide.
-
-The `-freeworld` packages are **additive** on Fedora 45, not replacements:
-verified with `repoquery`, they declare no `Conflicts` and share no plugin files
-with their `-free` counterparts. `libheif-freeworld` only ships the
-HEVC/AV1/x264/x265 codec plugins and pulls Fedora's `libheif` in as a hard
-dependency.
-
-`libdvdcss` is **not available** for Fedora 45 in RPM Fusion, so encrypted DVD
-playback is impossible. Unencrypted DVD media still decodes through
-`dvdread`/`dvdnav` in `ugly-free`.
-
-### Browser
-
-**Google Chrome** is installed and is the default handler for `http`, `https`,
-`text/html` and `application/xhtml+xml`.
-
-Helium's COPR is configured but Helium is not installed:
-
-```bash
-sudo dnf install helium-bin
-```
-
-Helium is Chromium-based without Google services, but it is beta, has no
-Widevine (so no Netflix/Spotify web), and pulls a Qt5 stack that this image does
-not otherwise install. Chrome is the safer default; the repo is there when you
-want to try the other one.
-
-### Developer toolchain
-
-`git` `gh` `just` `gitui` `ripgrep` `fd-find` `bat` `eza` `fzf` `zoxide`
-`direnv` `jq` `yq` `tmux` `gcc` `make` `pkgconf` `python3` `python3-pip`
-`python3-devel` `nodejs24` `podman` `podman-compose` `shellcheck` `btop`
-`strace` `lsof` `7zip`
-
-Quality of life: `wl-clipboard` `sshfs` `git-lfs` `ncdu` `poppler-utils` `duf`
-
-AppImage support: `fuse` + `fuse-libs`. A classic-runtime AppImage `dlopen`s
-`libfuse.so.2` and execs `fusermount`, and Fedora ships neither, so it fails
-with `dlopen(): error loading libfuse.so.2` — which reads like a corrupt
-download. Newer runtimes use libfuse3 (already present) or bundle FUSE
-statically, so this covers the ones that would otherwise break. Two packages,
-not one: `fuse` requires only `fuse-common`, so it brings the helper and not
-the library.
+`fuse` + `fuse-libs`. A classic-runtime AppImage `dlopen`s `libfuse.so.2` and
+execs `fusermount`, and Fedora ships neither, so it fails with
+`dlopen(): error loading libfuse.so.2` — which reads like a corrupt download.
+Newer runtimes use libfuse3 (already present) or bundle FUSE statically, so this
+covers the ones that would otherwise break. Two packages, not one: `fuse`
+requires only `fuse-common`, so it brings the helper and not the library.
 
 If a machine has no `/dev/fuse` at all (some containers, some kernels), the
 runtime's own escape hatch still works: `./whatever.AppImage
 --appimage-extract-and-run`.
-
-Flatpaks preinstalled from Flathub: **Flatseal**, **Extension Manager** and
-**Gear Lever** (the AppImage browser/integrator). Gear Lever launches the
-AppImage on the host rather than inside its sandbox, which is why `fuse` is a
-package here and not a side effect of the Flatpak.
-
-Deliberately absent: C/C++ extras beyond `gcc`/`make`, Rust, Go, Java, database
-servers, Kubernetes tooling. `uv` and everything else Python-related beyond
-`pip`/`devel` is left to the user.
-
-### Bash, improved without a framework
-
-One file, `/etc/profile.d/90-devstation.sh`, sourced by both `/etc/profile`
-(login shells) and `/etc/bashrc` (interactive shells), with a guard so it loads
-once:
-
-- history: 100k entries, shared between windows, appended live, duplicates
-  collapsed
-- `globstar` (`**`), `direxpand`, `checkwinsize`; `autocd` deliberately off
-- case-insensitive completion, complete on the first Tab
-- fzf: `Ctrl-R` history, `Ctrl-T` file picker, `Alt-C` directory jump
-- `zoxide` (`z`, `zi`) and `direnv`
-- prompt: user@host, trimmed path, git branch, last exit status on failure
-
-`EDITOR`/`VISUAL` are **not** set, and no editor beyond `vi` (from `@core`) and
-`nano` (the distro default editor) is shipped. Set them yourself if you install
-one.
-
-## Power and hardware
-
-Fedora's own stack, untouched: `tuned` + `tuned-ppd` (the Power Profiles D-Bus
-API in the Workstation environment), `thermald`, `upower`,
-`power-profiles-daemon` **not** installed (two providers of `ppd-service`
-would fight over the same D-Bus name — the kickstart asserts exactly one).
-
-`fwupd` and `gnome-firmware` are included: HP publishes EliteBook BIOS images
-to LVFS, so firmware updates work without a Windows dual boot.
 
 ## Install
 
@@ -272,13 +341,12 @@ only in where the packages come from.
 | ISO | Size | Install needs network | Built by |
 | --- | --- | --- | --- |
 | `…-45-x86_64.iso` | ~1.3 GB | yes | `./build.sh online` |
-| `…-45-x86_64-offline.iso` | ~2.7 GB | **no** | `./build.sh offline` |
+| `…-45-x86_64-offline.iso` | ~2.9 GB | **no** | `./build.sh offline` |
 
 Both fit a 4 GB USB stick.
 
-**Requirements:** x86_64 machine (written for an 840 G3), a USB stick of at
-least 4 GB, and — for the online ISO only — wired or wireless network during
-install.
+**Requirements:** x86_64 machine, a USB stick of at least 4 GB, and — for the
+online ISO only — wired or wireless network during install.
 
 1. Write the ISO to USB:
    ```bash
@@ -300,7 +368,7 @@ Leaving them out is what keeps the installer interactive.
 
 ### What "offline" does and does not cover
 
-The offline ISO embeds the resolved RPM closure (~1.5 GB) as a `createrepo_c`
+The offline ISO embeds the resolved RPM closure (~2 GB) as a `createrepo_c`
 repository, and the generated kickstart installs from
 `file:///run/install/repo/packages`. No mirror is contacted at any point: the
 RPM Fusion release packages and the Chrome signing key are shipped on the ISO
@@ -316,7 +384,7 @@ Two things still need a network, and the build says so out loud:
   system is the package set that was current when the ISO was built.
 
 Everything else — the desktop, the codecs, the browser, the AppImage runtime,
-the toolchain — is on the ISO.
+the toolchain, the firmware — is on the ISO.
 
 ## First boot
 
@@ -336,23 +404,28 @@ fwupdmgr get-devices
 # AppImage support: both lines must print something
 ldconfig -p | grep libfuse.so.2 && command -v fusermount
 
+# NVIDIA (if you have an NVIDIA card; akmod builds at first boot)
+nvidia-smi
+
 # Chrome memory saver on an 8 GB machine
 # chrome://settings/performance -> Memory Saver -> on
 ```
 
-## Verification gates in the build
+## Verification gates
 
 `%post` fails the install if any of these is untrue, so the README cannot drift
 away from the image:
 
 - required packages present: `gnome-shell`, `gdm`, both extensions, Chrome,
   `libva-intel-media-driver`, `iwlwifi-mvm-firmware`, `tuned-ppd`, `bash`,
-  `ffmpeg`, `fuse`, both RPM Fusion release packages
+  `ffmpeg`, `fuse`, `kernel`, `akmod-nvidia`, `kernel-devel`, `gcc`, `make`,
+  `kernel-headers`, `glibc-devel`, `kernel-modules-extra`,
+  `mesa-va-drivers-freeworld`, `fwupd`, `gnome-firmware`, both RPM Fusion
+  release packages
 - `ldconfig -p` lists `libfuse.so.2` (the AppImage runtime `dlopen`s that
   soname, so the package alone would not prove it)
 - trimmed packages absent: Firefox, LibreOffice, GNOME Boxes, GNOME Software,
-  `gnome-tour`, Maps, Weather, `rygel`, remote desktop, Helium, `helix`,
-  NVIDIA/AMD firmware, `alsa-sof-firmware`
+  `gnome-tour`, Maps, Weather, `rygel`, remote desktop, Helium, `helix`
 - `dconf read /org/gnome/shell/enabled-extensions` contains both UUIDs
 - both extensions declare the installed shell major version
 - exactly one `ppd-service` provider
@@ -372,9 +445,9 @@ wrappers around it.
 ./build.sh deps       # lorax, pykickstart, xorriso, isomd5sum, podman
 ./build.sh base       # netinst ISO + RPM Fusion release RPMs + keys + comps
 ./build.sh online     # out/gnome-devstation-45-x86_64.iso          (~1.3 GB)
-./build.sh offline    # out/gnome-devstation-45-x86_64-offline.iso  (~2.7 GB)
-./build.sh packages   # just resolve the package tree (packages/, ~1.5 GB)
-./build.sh check      # kickstart validation only
+./build.sh offline    # out/gnome-devstation-45-x86_64-offline.iso  (~2.9 GB)
+./build.sh packages   # just resolve the package tree (packages/, ~2 GB)
+./build.sh check      # kickstart validation + bash -n on every %pre/%post
 ```
 
 With `just`, the same steps are `just fetch-base`, `just build`,
@@ -396,12 +469,12 @@ device and therefore root. `build.sh` elevates **only that command** and gives
 the resulting file back to you; downloads, the package tree and `out/` stay
 owned by your user. On a machine without `mkksiso`, run `./build.sh deps` once.
 
-The offline package tree is resolved inside a `registry.fedoraproject.org/fedora:$FEDORA_RELEASE`
-container, so a Fedora 44 laptop can still build a correct Fedora 45 image. Set
-`BUILD_IMAGE=none` when you are already inside a container of the target
-release — that is what CI does.
+The offline package tree is resolved inside a
+`registry.fedoraproject.org/fedora:$FEDORA_RELEASE` container, so a Fedora 44
+laptop can still build a correct Fedora 45 image. Set `BUILD_IMAGE=none` when you
+are already inside a container of the target release — that is what CI does.
 
-### What an offline build actually does
+## What an offline build actually does
 
 1. `cache/comps.xml` expands `@^workstation-product-environment` and the
    `-@group` removals into an explicit list, using the same rules Anaconda uses.
@@ -415,7 +488,7 @@ release — that is what CI does.
    else, `%post` included, is shared with the online image.
 
 The result is verified before packaging: resolving the list against only
-`file://…/packages` must succeed with zero problems. On Fedora 45 that is 1566
+`file://…/packages` must succeed with zero problems. On Fedora 45 that is 1676
 packages, and the transaction is byte-for-byte what an online install would
 fetch.
 
@@ -439,10 +512,26 @@ justfile                        Thin wrappers around build.sh.
 
 Two notes on the workflow, since GitHub's free tier is the reason both
 repositories are public: Actions minutes are unlimited for public repositories,
-and the build job is `workflow_dispatch` only because it produces a 2.7 GB
+and the build job is `workflow_dispatch` only because it produces a 2.9 GB
 artifact. Validation runs on every push and costs seconds. The build runs in a
 `docker run --privileged` container rather than a `container:` job, because the
 EFI step needs loop devices.
+
+## Troubleshooting
+
+- **"dlopen(): error loading libfuse.so.2"** — the AppImage is a classic-runtime
+  build and `fuse-libs` is missing. It is in the image; if you see this on a
+  different machine, install `fuse-libs`.
+- **No network after install** — check `ip link` and `nmcli device status`. The
+  image carries every wireless firmware package, so a missing blob is not the
+  usual cause; a regulatory-domain problem is. `sudo fwupdmgr refresh &&
+  sudo fwupdmgr update` sometimes fixes a stale `wireless-regdb`.
+- **NVIDIA black screen** — `akmod-nvidia` builds at install time. If the build
+  failed, the install still succeeded and you get nouveau. Rebuild with
+  `sudo akmods --force` and check `journalctl -b | grep akmod`.
+- **Boot after offline install, no kernel** — this was a real bug before
+  `kernel` was listed explicitly. If you have an old ISO, the kickstart in this
+  repository is the fix; rebuild.
 
 ## License
 

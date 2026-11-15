@@ -77,6 +77,18 @@ repo --name="rpmfusion-nonfree-updates" --baseurl=https://download1.rpmfusion.or
 
 @^workstation-product-environment
 
+# The kernel is listed, not implied.
+#
+# Anaconda only adds `kernel` to the transaction if it can resolve it from an
+# enabled repository (get_kernel_package() in pyanaconda). When it cannot, it
+# logs "No such package: kernel" and carries on installing without one. The
+# online ISO never notices, because Fedora's own repos carry it. The offline
+# ISO installs from its embedded package tree and nothing else, so a tree
+# resolved from a kickstart that never mentions the kernel contains no kernel
+# rpm at all -- and the resulting install cannot boot. Listing it here is what
+# puts the kernel into that tree.
+kernel
+
 # --- Groups removed -------------------------------------------------------
 -@libreoffice
 -@firefox
@@ -138,29 +150,40 @@ repo --name="rpmfusion-nonfree-updates" --baseurl=https://download1.rpmfusion.or
 -gamemode
 -toolbox
 
-# --- Non-Intel firmware ---------------------------------------------------
-# This image is built for one laptop: Intel Skylake graphics, Intel 8260
-# Wi-Fi/Bluetooth, Intel HDA audio, no discrete GPU, no optical drive.
-# Every vendor blob below is unusable there. linux-firmware itself stays,
-# because it carries the regulatory database the wireless stack reads.
--amd-gpu-firmware
--amd-ucode-firmware
--nvidia-gpu-firmware
--atheros-firmware
--brcmfmac-firmware
--realtek-firmware
--mt7xxx-firmware
--nxpwireless-firmware
--qcom-wwan-firmware
--tiwilink-firmware
--libertas-firmware
--iwlegacy-firmware
--iwlwifi-dvm-firmware
--b43-fwcutter
--b43-openfwwf
--cirrus-audio-firmware
--alsa-sof-firmware
--intel-vsc-firmware
+# --- Firmware and hardware enablement -------------------------------
+#
+# Catch-all, not Intel-only. This image is built to boot on whatever it lands
+# on, so every vendor's firmware ships. The EliteBook 840 G3 that started this
+# project uses the Intel row of this table; a different machine uses a
+# different row and nothing else changes.
+#
+# linux-firmware itself stays regardless: it carries the wireless regulatory
+# database the kernel reads at boot, and it is a dependency of the vendor
+# packages below, so it is never an extra.
+linux-firmware
+wireless-regdb
+alsa-ucm
+alsa-sof-firmware
+intel-audio-firmware
+cirrus-audio-firmware
+amd-gpu-firmware
+amd-ucode-firmware
+intel-gpu-firmware
+nvidia-gpu-firmware
+atheros-firmware
+brcmfmac-firmware
+iwlwifi-dvm-firmware
+iwlwifi-mvm-firmware
+iwlbluetooth-firmware
+realtek-firmware
+mt7xxx-firmware
+nxpwireless-firmware
+qcom-wwan-firmware
+tiwilink-firmware
+libertas-firmware
+iwlegacy-firmware
+intel-vsc-firmware
+microcode_ctl
 
 # --- Content the environment group does not provide -----------------------
 
@@ -173,14 +196,31 @@ libglvnd-gles
 gnome-shell-extension-caffeine
 gnome-shell-extension-appindicator
 
-# Firmware for this machine only
-intel-gpu-firmware
-intel-audio-firmware
-iwlwifi-mvm-firmware
-iwlbluetooth-firmware
-microcode_ctl
+# --- Optional hardware, not in the default set ---------------------
+#
+# kernel-modules-extra is a separate package from kernel-modules: it is the
+# long tail of sensors, old radios, niche card readers and other devices that
+# the main module set does not carry. Fedora's Workstation does not install it;
+# a catch-all image does, at ~3 MB.
+kernel-modules-extra
 
-# Video decode and the non-free codec stack
+# --- NVIDIA driver -------------------------------------------------
+#
+# RPM Fusion's akmod-nvidia builds the kernel module at install time and
+# rebuilds it on every kernel update, so it needs the build toolchain and the
+# matching kernel-devel in the same transaction. That is why gcc, make,
+# kernel-headers and glibc-devel are listed rather than implied: on an offline
+# ISO there is no second dnf pass to fetch them, and a missing build dep fails
+# the install instead of shipping a broken driver. kernel-devel pins the
+# exact kernel version the tree contains, so the module always matches.
+akmod-nvidia
+kernel-devel
+gcc
+make
+kernel-headers
+glibc-devel
+
+# --- Video decode and the non-free codec stack -----------------------
 #
 # The freeworld packages are additive on Fedora 45, not replacements: verified
 # with repoquery, they declare no Conflicts and share no plugin files with
@@ -195,6 +235,7 @@ microcode_ctl
 libva-intel-driver
 libva-intel-media-driver
 libva-utils
+mesa-va-drivers-freeworld
 mesa-dri-drivers
 mesa-vulkan-drivers
 vulkan-tools
@@ -235,8 +276,7 @@ direnv
 jq
 yq
 tmux
-gcc
-make
+# gcc and make ship via the NVIDIA toolchain block above (same transaction)
 pkgconf
 python3
 python3-pip
@@ -416,7 +456,9 @@ fail=0
 for pkg in gnome-shell gdm gnome-shell-extension-caffeine \
            gnome-shell-extension-appindicator google-chrome-stable \
            libva-intel-media-driver iwlwifi-mvm-firmware bash tuned-ppd \
-           ffmpeg fuse rpmfusion-free-release rpmfusion-nonfree-release; do
+           ffmpeg fuse rpmfusion-free-release rpmfusion-nonfree-release \
+           kernel akmod-nvidia kernel-devel gcc make kernel-headers glibc-devel \
+           kernel-modules-extra mesa-va-drivers-freeworld fwupd gnome-firmware; do
   if ! rpm -q "$pkg" >/dev/null 2>&1; then
     echo "MISSING REQUIRED PACKAGE: $pkg" >&2
     fail=1
@@ -427,7 +469,6 @@ done
 # dependency is exactly the failure this list exists to catch.
 for pkg in firefox libreoffice-writer gnome-boxes gnome-software gnome-tour \
            gnome-maps gnome-weather rygel gnome-remote-desktop \
-           nvidia-gpu-firmware amd-gpu-firmware alsa-sof-firmware \
            helium-bin helix; do
   if rpm -q "$pkg" >/dev/null 2>&1; then
     echo "PRESENT BUT SHOULD BE TRIMMED: $pkg" >&2
