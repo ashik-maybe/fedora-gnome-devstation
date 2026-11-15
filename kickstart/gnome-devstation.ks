@@ -258,6 +258,19 @@ ncdu
 poppler-utils
 duf
 
+# AppImage support.
+#
+# Type-2 AppImages mount themselves through FUSE 2, and Fedora ships only FUSE 3
+# by default. Without this, every AppImage dies with "dlopen(): error loading
+# libfuse.so.2", which reads like a broken download. `fuse` pulls `fuse-libs`
+# (the library itself) and `fusermount` (the helper the runtime execs), and it
+# coexists with `fuse3`.
+#
+# It also covers AppImages launched from Gear Lever: that Flatpak talks to
+# org.freedesktop.Flatpak so the AppImage runs on the host, not inside the
+# sandbox, and therefore needs this same library.
+fuse
+
 %end
 
 # --- Install files shipped on the ISO -------------------------------------
@@ -364,16 +377,17 @@ text/html=google-chrome.desktop
 application/xhtml+xml=google-chrome.desktop
 EOF
 
-# 6. Flathub plus the two Flatpaks this image standardises on. Both steps need
+# 6. Flathub plus the three Flatpaks this image standardises on. Both steps need
 #    network and a usable /var inside the chroot; warn instead of failing an
 #    otherwise good install if the network drops here.
 if [ "$offline" -eq 1 ]; then
-  echo "offline ISO: skipping Flathub; install Flatseal and Extension Manager after first boot" >&2
+  echo "offline ISO: skipping Flathub; install Flatseal, Extension Manager and Gear Lever after first boot" >&2
 else
   flatpak remote-add --if-not-exists flathub \
     https://flathub.org/repo/flathub.flatpakrepo || \
     echo "WARNING: could not add the flathub remote" >&2
-  for app in com.github.tchx84.Flatseal com.mattjakeman.ExtensionManager; do
+  for app in com.github.tchx84.Flatseal com.mattjakeman.ExtensionManager \
+             it.mijorus.gearlever; do
     flatpak install -y --system flathub "$app" || \
       echo "WARNING: $app not preinstalled; run 'flatpak install flathub $app' after first boot" >&2
   done
@@ -398,7 +412,7 @@ fail=0
 for pkg in gnome-shell gdm gnome-shell-extension-caffeine \
            gnome-shell-extension-appindicator google-chrome-stable \
            libva-intel-media-driver iwlwifi-mvm-firmware bash tuned-ppd \
-           ffmpeg rpmfusion-free-release rpmfusion-nonfree-release; do
+           ffmpeg fuse rpmfusion-free-release rpmfusion-nonfree-release; do
   if ! rpm -q "$pkg" >/dev/null 2>&1; then
     echo "MISSING REQUIRED PACKAGE: $pkg" >&2
     fail=1
@@ -416,6 +430,14 @@ for pkg in firefox libreoffice-writer gnome-boxes gnome-software gnome-tour \
     fail=1
   fi
 done
+
+# The AppImage runtime dlopens this exact soname, so check the library rather
+# than trusting the package name. Both paths exist because the package ships
+# one copy for each prefix.
+if ! ldconfig -p | grep -q 'libfuse\.so\.2'; then
+  echo "MISSING LIBFUSE.SO.2: AppImages will not run" >&2
+  fail=1
+fi
 
 # The extensions must actually be enabled for the first login, and the packaged
 # metadata must know about the installed shell major version.

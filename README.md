@@ -215,7 +215,13 @@ want to try the other one.
 
 Quality of life: `wl-clipboard` `sshfs` `git-lfs` `ncdu` `poppler-utils` `duf`
 
-Flatpaks preinstalled from Flathub: **Flatseal** and **Extension Manager**.
+AppImage support: `fuse` (FUSE 2 — the runtime behind every type-2 AppImage
+mounts itself with `libfuse.so.2`, which Fedora does not ship by default).
+
+Flatpaks preinstalled from Flathub: **Flatseal**, **Extension Manager** and
+**Gear Lever** (the AppImage browser/integrator). Gear Lever launches the
+AppImage on the host rather than inside its sandbox, which is why `fuse` is a
+package here and not a side effect of the Flatpak.
 
 Deliberately absent: C/C++ extras beyond `gcc`/`make`, Rust, Go, Java, database
 servers, Kubernetes tooling. `uv` and everything else Python-related beyond
@@ -293,15 +299,15 @@ too, so `%post` does not download anything either.
 
 Two things still need a network, and the build says so out loud:
 
-- **Flatpaks** (Flatseal, Extension Manager) are skipped during an offline
-  install, with a warning. Install them after first boot with
+- **Flatpaks** (Flatseal, Extension Manager, Gear Lever) are skipped during an
+  offline install, with a warning. Install them after first boot with
   `flatpak install flathub …` once you are online; the Flathub remote is only
   added by the online ISO.
 - **Updates** obviously need one. Immediately after an offline install your
   system is the package set that was current when the ISO was built.
 
-Everything else — the desktop, the codecs, the browser, the toolchain — is on
-the ISO.
+Everything else — the desktop, the codecs, the browser, the AppImage runtime,
+the toolchain — is on the ISO.
 
 ## First boot
 
