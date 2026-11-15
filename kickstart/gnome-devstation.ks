@@ -186,17 +186,24 @@ microcode_ctl
 # with repoquery, they declare no Conflicts and share no plugin files with
 # their -free counterparts. libheif-freeworld only ships the HEVC/AV1/x264/x265
 # codec plugins, so Fedora's libheif stays installed and glycin keeps working.
-# That is why there is no swap dance here, unlike ffmpeg (see %post).
+#
+# ffmpeg is listed here, not swapped in after the install. Resolution testing
+# showed RPM Fusion's ffmpeg-libs satisfies every libavcodec/libavformat
+# requirement in the transaction, so ffmpeg-free is never selected and the
+# whole set resolves in one pass. That is what makes an offline install
+# possible: no post-install dnf transaction needs a repository.
 libva-intel-driver
 libva-intel-media-driver
 libva-utils
 mesa-dri-drivers
 mesa-vulkan-drivers
 vulkan-tools
+ffmpeg
 vlc
 vlc-plugins-freeworld
 gstreamer1-plugins-bad-freeworld
 gstreamer1-plugins-ugly
+gstreamer1-plugins-ugly-free
 gstreamer1-plugin-libav
 libheif-freeworld
 unrar
@@ -276,6 +283,22 @@ install -Dm0644 "$src/dconf-00-devstation" "$root/etc/dconf/db/local.d/00-devsta
 install -Dm0644 /run/install/repo/repos/google-chrome.repo "$root/etc/yum.repos.d/google-chrome.repo"
 install -Dm0644 /run/install/repo/repos/helium-copr.repo "$root/etc/yum.repos.d/helium-copr.repo"
 
+# Assets fetched at build time (see build.sh): RPM Fusion's release packages and
+# the third-party signing keys. They are copied into the installed system here
+# because the ISO mount is not guaranteed to be visible inside the chrooted
+# %post, and because the install must work with the network unplugged.
+assets=/run/install/repo/assets
+for f in rpmfusion-free-release.noarch.rpm rpmfusion-nonfree-release.noarch.rpm \
+         google-chrome.asc helium-copr.asc; do
+  install -Dm0644 "$assets/$f" "$root/var/tmp/ks-assets/$f"
+done
+
+# Marker written by `build.sh offline`. The chrooted %post uses it to skip the
+# steps that can only work with a network.
+if [ -e /run/install/repo/offline ]; then
+  install -Dm0644 /run/install/repo/offline "$root/var/tmp/ks-assets/offline"
+fi
+
 %end
 
 # --- System configuration -------------------------------------------------
@@ -284,27 +307,41 @@ install -Dm0644 /run/install/repo/repos/helium-copr.repo "$root/etc/yum.repos.d/
 %post --erroronfail --log=/root/ks-post.log
 set -euxo pipefail
 
-release="$(rpm -E %fedora)"
+# 0. Is this the offline ISO? build.sh marks it, and the only steps that need a
+#    network (Flathub) are skipped instead of timing out.
+offline=0
+if [ -e /var/tmp/ks-assets/offline ]; then
+  offline=1
+fi
 
 # 1. Persist RPM Fusion for the installed system.
 #    The `repo` lines above only configure the installer, and Anaconda writes
 #    them into /etc/yum.repos.d as a side effect. Drop those generated files
 #    first: the release packages ship the maintained, signed versions, and
 #    keeping both would duplicate sections.
+#
+#    The release packages come from the ISO (copied by %post --nochroot), and
+#    `rpm -Uvh` is deliberate: their only dependencies are already installed,
+#    so this needs no repository metadata and works with no network. `dnf
+#    install` here would make the offline install depend on a reachable mirror.
+#    --nosignature is the chicken-and-egg: the key that signs these packages
+#    ships inside them. They arrive over HTTPS from RPM Fusion's own mirror,
+#    and their only content is repository definitions and that key.
 rm -f /etc/yum.repos.d/rpmfusion-free.repo \
       /etc/yum.repos.d/rpmfusion-free-updates.repo \
       /etc/yum.repos.d/rpmfusion-nonfree.repo \
-      /etc/yum.repos.d/rpmfusion-nonfree-updates.repo
+      /etc/yum.repos.d/rpmfusion-nonfree-updates.repo \
+      /etc/yum.repos.d/ks-offline.repo
 
-dnf install -y \
-  "https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-${release}.noarch.rpm" \
-  "https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${release}.noarch.rpm"
+rpm -Uvh --nosignature /var/tmp/ks-assets/rpmfusion-free-release.noarch.rpm \
+         /var/tmp/ks-assets/rpmfusion-nonfree-release.noarch.rpm
 
 # 2. Trust the two third-party signing keys now, so the first `dnf upgrade`
 #    does not stop for a prompt. The repo files themselves are shipped on the
-#    ISO and already point at these keys.
-rpm --import https://dl.google.com/linux/linux_signing_key.pub
-rpm --import https://download.copr.fedorainfracloud.org/results/imput/helium/pubkey.gpg
+#    ISO and already point at these keys; the copies here are what makes the
+#    import work offline.
+rpm --import /var/tmp/ks-assets/google-chrome.asc
+rpm --import /var/tmp/ks-assets/helium-copr.asc
 
 # 3. Graphical boot with GDM.
 systemctl set-default graphical.target
@@ -330,13 +367,17 @@ EOF
 # 6. Flathub plus the two Flatpaks this image standardises on. Both steps need
 #    network and a usable /var inside the chroot; warn instead of failing an
 #    otherwise good install if the network drops here.
-flatpak remote-add --if-not-exists flathub \
-  https://flathub.org/repo/flathub.flatpakrepo || \
-  echo "WARNING: could not add the flathub remote" >&2
-for app in com.github.tchx84.Flatseal com.mattjakeman.ExtensionManager; do
-  flatpak install -y --system flathub "$app" || \
-    echo "WARNING: $app not preinstalled; run 'flatpak install flathub $app' after first boot" >&2
-done
+if [ "$offline" -eq 1 ]; then
+  echo "offline ISO: skipping Flathub; install Flatseal and Extension Manager after first boot" >&2
+else
+  flatpak remote-add --if-not-exists flathub \
+    https://flathub.org/repo/flathub.flatpakrepo || \
+    echo "WARNING: could not add the flathub remote" >&2
+  for app in com.github.tchx84.Flatseal com.mattjakeman.ExtensionManager; do
+    flatpak install -y --system flathub "$app" || \
+      echo "WARNING: $app not preinstalled; run 'flatpak install flathub $app' after first boot" >&2
+  done
+fi
 
 # 7. Security updates in the background. GNOME Software is not part of this
 #    image, so the update path is dnf5's own timer.
@@ -350,21 +391,14 @@ elif [ -f /usr/lib/systemd/system/dnf-automatic.timer ]; then
   systemctl enable dnf-automatic.timer
 fi
 
-# 8. Full FFmpeg. ffmpeg-free cannot coexist with RPM Fusion's ffmpeg, so it is
-#    a swap, not an addition. A kickstart %packages section cannot express
-#    --allowerasing, which is the only reason this runs post-install.
-#    Playback works either way; this is for encoders and codec coverage.
-if ! dnf swap -y ffmpeg-free ffmpeg --allowerasing; then
-  echo "WARNING: ffmpeg swap failed; ffmpeg-free remains installed" >&2
-fi
-
-# 9. Verification gate. Every check below is a claim made in README.md, so a
+# 8. Verification gate. Every check below is a claim made in README.md, so a
 #    silent regression fails the install instead of shipping a broken image.
 fail=0
 
 for pkg in gnome-shell gdm gnome-shell-extension-caffeine \
            gnome-shell-extension-appindicator google-chrome-stable \
-           libva-intel-media-driver iwlwifi-mvm-firmware bash tuned-ppd; do
+           libva-intel-media-driver iwlwifi-mvm-firmware bash tuned-ppd \
+           ffmpeg rpmfusion-free-release rpmfusion-nonfree-release; do
   if ! rpm -q "$pkg" >/dev/null 2>&1; then
     echo "MISSING REQUIRED PACKAGE: $pkg" >&2
     fail=1
@@ -428,11 +462,15 @@ fi
 
 [ "$fail" -eq 0 ] || exit 1
 
-# 10. Hardware decode: report, never fail. VMs have no VA-API device, and this
-#     kickstart must stay installable there.
+# 9. Hardware decode: report, never fail. VMs have no VA-API device, and this
+#    kickstart must stay installable there.
 if ! vainfo 2>/dev/null | grep -q 'VAProfileH264High'; then
   echo "WARNING: vainfo reports no H264 profile (expected in a VM); check 'vainfo' after first boot" >&2
 fi
+
+# 10. The build assets have been consumed. Leaving them behind would put RPM
+#     Fusion's release files and the third-party keys in /var/tmp forever.
+rm -rf /var/tmp/ks-assets
 
 %end
 
