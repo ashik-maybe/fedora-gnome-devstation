@@ -57,11 +57,11 @@ is missing:
 
 | | Stock `@workstation-product-environment` | This image |
 | --- | --- | --- |
-| Packages installed | 1855 | **1676** |
+| Packages installed | 1855 | **1681** |
 | Download | ~2 GiB | ~2 GiB |
 | Installed size | ~6 GiB | ~6 GiB |
 
-179 fewer packages, and the difference is entirely applications: the firmware,
+174 fewer packages, and the difference is entirely applications: the firmware,
 kernel, toolchain and codec stack are all in. Helium, if you add it later, is
 ~415 MB plus a Qt5 stack that this image does not otherwise carry.
 
@@ -432,9 +432,11 @@ away from the image:
 - `google-chrome.desktop` exists and is the `https` handler
 - the bash profile passes `bash -n`
 
-The `build.sh` side has one more gate, before the ISO is built: the resolved
-package tree must not contain the trimmed applications. Finding that out after a
-15-minute install is worse than failing the build.
+The `build.sh` side has three more gates, before the ISO is built: the resolved
+package tree must not contain the trimmed applications, the tree must resolve
+against only itself (`file://…/packages`, no network reachable), and the
+generated offline kickstart must pass the same kickstart validation the source
+one does. Finding out after a 15-minute install is worse than failing the build.
 
 ## Building
 
@@ -502,10 +504,11 @@ system).
    embedded repository, and `%packages` becomes the resolved list. Everything
    else, `%post` included, is shared with the online image.
 
-The result is verified before packaging: resolving the list against only
-`file://…/packages` must succeed with zero problems. On Fedora 45 that is 1676
-packages, and the transaction is byte-for-byte what an online install would
-fetch.
+The result is verified before packaging, twice: the package tree must resolve
+against only `file://…/packages` with zero problems (no network reachable), and
+the generated offline kickstart must pass the same kickstart validation the
+source one does. On Fedora 45 that is 1681 packages, and the transaction is
+byte-for-byte what an online install would fetch.
 
 ## Project layout
 
