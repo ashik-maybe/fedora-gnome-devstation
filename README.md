@@ -215,8 +215,17 @@ want to try the other one.
 
 Quality of life: `wl-clipboard` `sshfs` `git-lfs` `ncdu` `poppler-utils` `duf`
 
-AppImage support: `fuse` (FUSE 2 — the runtime behind every type-2 AppImage
-mounts itself with `libfuse.so.2`, which Fedora does not ship by default).
+AppImage support: `fuse` + `fuse-libs`. A classic-runtime AppImage `dlopen`s
+`libfuse.so.2` and execs `fusermount`, and Fedora ships neither, so it fails
+with `dlopen(): error loading libfuse.so.2` — which reads like a corrupt
+download. Newer runtimes use libfuse3 (already present) or bundle FUSE
+statically, so this covers the ones that would otherwise break. Two packages,
+not one: `fuse` requires only `fuse-common`, so it brings the helper and not
+the library.
+
+If a machine has no `/dev/fuse` at all (some containers, some kernels), the
+runtime's own escape hatch still works: `./whatever.AppImage
+--appimage-extract-and-run`.
 
 Flatpaks preinstalled from Flathub: **Flatseal**, **Extension Manager** and
 **Gear Lever** (the AppImage browser/integrator). Gear Lever launches the
@@ -324,6 +333,9 @@ powerprofilesctl get
 # Firmware updates
 fwupdmgr get-devices
 
+# AppImage support: both lines must print something
+ldconfig -p | grep libfuse.so.2 && command -v fusermount
+
 # Chrome memory saver on an 8 GB machine
 # chrome://settings/performance -> Memory Saver -> on
 ```
@@ -335,7 +347,9 @@ away from the image:
 
 - required packages present: `gnome-shell`, `gdm`, both extensions, Chrome,
   `libva-intel-media-driver`, `iwlwifi-mvm-firmware`, `tuned-ppd`, `bash`,
-  `ffmpeg`, both RPM Fusion release packages
+  `ffmpeg`, `fuse`, both RPM Fusion release packages
+- `ldconfig -p` lists `libfuse.so.2` (the AppImage runtime `dlopen`s that
+  soname, so the package alone would not prove it)
 - trimmed packages absent: Firefox, LibreOffice, GNOME Boxes, GNOME Software,
   `gnome-tour`, Maps, Weather, `rygel`, remote desktop, Helium, `helix`,
   NVIDIA/AMD firmware, `alsa-sof-firmware`
@@ -415,6 +429,7 @@ files/dconf-00-devstation       Pre-enables Caffeine and appindicator.
 repos/google-chrome.repo        Shipped to /etc/yum.repos.d.
 repos/helium-copr.repo          Shipped, enabled, Helium not installed.
 build.sh                        All build entry points, online and offline.
+scripts/check-kickstart.sh      ksvalidator + bash -n on every %pre/%post.
 scripts/expand-packages.py      comps + %packages -> explicit package list.
 scripts/resolve-packages.sh     Downloads that list into packages/.
 scripts/make-offline-ks.py      Writes the offline ISO's kickstart.

@@ -260,16 +260,20 @@ duf
 
 # AppImage support.
 #
-# Type-2 AppImages mount themselves through FUSE 2, and Fedora ships only FUSE 3
-# by default. Without this, every AppImage dies with "dlopen(): error loading
-# libfuse.so.2", which reads like a broken download. `fuse` pulls `fuse-libs`
-# (the library itself) and `fusermount` (the helper the runtime execs), and it
-# coexists with `fuse3`.
+# AppImage runtimes differ. The classic one dlopens libfuse.so.2 and fails with
+# "dlopen(): error loading libfuse.so.2" when it is missing; newer ones can use
+# libfuse3 (Fedora ships that) or bundle FUSE statically. Only the classic one
+# needs anything from us, and it is still the most common one in the wild.
+#
+# Both packages are required, and that is not obvious: `fuse` needs only
+# `fuse-common`, not `fuse-libs`, so it installs `fusermount` and leaves the
+# library out. The classic runtime needs both. Neither conflicts with fuse3.
 #
 # It also covers AppImages launched from Gear Lever: that Flatpak talks to
 # org.freedesktop.Flatpak so the AppImage runs on the host, not inside the
 # sandbox, and therefore needs this same library.
 fuse
+fuse-libs
 
 %end
 
