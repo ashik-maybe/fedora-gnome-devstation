@@ -49,7 +49,7 @@ iso="$(readlink -f "$iso")"
 echo "test-iso: $iso ($(du -h "$iso" | cut -f1))"
 
 command -v xorriso >/dev/null || {
-	echo "test-iso: xorriso missing (./build.sh deps)" >&2
+	echo "test-iso: xorriso missing (./build.sh deps-test)" >&2
 	exit 1
 }
 
