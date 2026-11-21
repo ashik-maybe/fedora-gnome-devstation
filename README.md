@@ -366,6 +366,27 @@ Partitioning, `rootpw` and user creation are deliberately not in the kickstart.
 If they were, Anaconda would install unattended and you would never see the GUI.
 Leaving them out is what keeps the installer interactive.
 
+### The other install path: convert a fresh Fedora 45 Workstation in place
+
+You do not have to boot an ISO. A **fresh Fedora 45 Workstation** can be turned
+into this same machine in place, with the converter:
+
+```bash
+sudo dnf install -y git
+git clone <this-repo> && cd gnome-devstation
+sudo migrate/migrate.sh --plan          # show the work, change nothing
+sudo migrate/migrate.sh                 # apply; re-run to resume
+```
+
+It reads the same `kickstart/gnome-devstation.ks` at run time and adds the same
+repositories, packages, removals and configuration as the ISO. It stays
+Fedora-branded: no release swap, no custom identity, no theme. The run is staged
+and resumable, so a Ctrl+C or a lost network connection does not start it over.
+
+This is an in-place package change, not an atomic image swap — back the machine
+up first. See [migrate/README.md](migrate/README.md) for the prerequisites, the
+ten steps, resume and corruption recovery, command-line options and rollback.
+
 ### What "offline" does and does not cover
 
 The offline ISO embeds the resolved RPM closure (~2 GB) as a `createrepo_c`
