@@ -465,6 +465,7 @@ GitHub workflow only validates the kickstart.
 
 ```bash
 ./build.sh deps       # lorax, pykickstart, xorriso, isomd5sum, podman
+./build.sh deps-test  # qemu, socat, OVMF and xorriso; only needed for test-iso
 ./build.sh base       # netinst ISO + RPM Fusion release RPMs + keys + comps
 ./build.sh online     # out/gnome-devstation-45-x86_64.iso          (~1.3 GB)
 ./build.sh offline    # out/gnome-devstation-45-x86_64-offline.iso  (~2.9 GB)
@@ -474,7 +475,7 @@ GitHub workflow only validates the kickstart.
 ./build.sh test-iso   # content + boot test of an out/*.iso (pass its path)
 ```
 
-With `just`, the same steps are `just fetch-base`, `just build`,
+With `just`, the same steps are `just fetch-base`, `just deps-test`, `just build`,
 `just build-offline`, `just packages`, `just check`, `just preflight`,
 `just test-iso`.
 
