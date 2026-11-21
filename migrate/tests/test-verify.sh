@@ -88,6 +88,66 @@ check "gate exits nonzero when gnome-shell missing" [ "$RC" -ne 0 ]
 check "gate does not crash with exit 127" [ "$RC" -ne 127 ]
 check "gate reports gnome-shell problem" str_has "GNOME-SHELL VERSION UNAVAILABLE" "$OUT"
 
+echo "== 90-verify writes converted marker only on gate success"
+case_dir="$work/step90"
+mkdir -p "$case_dir/state" "$case_dir/root"
+# gate that succeeds
+cat >"$case_dir/gate-ok" <<'G'
+#!/usr/bin/env bash
+exit 0
+G
+# gate that fails
+cat >"$case_dir/gate-fail" <<'G'
+#!/usr/bin/env bash
+echo "gate failed" >&2
+exit 1
+G
+chmod +x "$case_dir/gate-ok" "$case_dir/gate-fail"
+
+set +e
+OUT=$(
+  REPO_DIR="$case_dir/repo" STATE_DIR="$case_dir/state" ROOT="$case_dir/root"
+  mkdir -p "$REPO_DIR/files"
+  cp "$case_dir/gate-ok" "$REPO_DIR/files/verify-devstation.sh"
+  source "$repo/migrate/steps/90-verify.sh"
+  step_run 2>&1
+)
+RC=$?
+set -e
+check "90-verify returns 0 on gate success" [ "$RC" -eq 0 ]
+check "90-verify writes converted marker" [ -f "$case_dir/state/converted" ]
+
+rm -f "$case_dir/state/converted"
+set +e
+OUT=$(
+  REPO_DIR="$case_dir/repo2" STATE_DIR="$case_dir/state" ROOT="$case_dir/root"
+  mkdir -p "$REPO_DIR/files"
+  cp "$case_dir/gate-fail" "$REPO_DIR/files/verify-devstation.sh"
+  source "$repo/migrate/steps/90-verify.sh"
+  step_run 2>&1
+)
+RC=$?
+set -e
+check "90-verify returns nonzero on gate failure" [ "$RC" -ne 0 ]
+check "90-verify removes converted marker on gate failure" [ ! -e "$case_dir/state/converted" ]
+
+echo "== 90-verify fails if converted marker cannot be written"
+case_dir="$work/step90-writefail"
+mkdir -p "$case_dir/state" "$case_dir/root" "$case_dir/repo/files"
+cp "$work/step90/gate-ok" "$case_dir/repo/files/verify-devstation.sh"
+chmod -R a-w "$case_dir/state"
+set +e
+OUT=$(
+  # shellcheck disable=SC2034 # consumed by the sourced step
+  REPO_DIR="$case_dir/repo" STATE_DIR="$case_dir/state" ROOT="$case_dir/root"
+  source "$repo/migrate/steps/90-verify.sh"
+  step_run 2>&1
+)
+RC=$?
+set -e
+chmod -R u+w "$case_dir/state" 2>/dev/null || true
+check "90-verify returns nonzero when marker cannot be written" [ "$RC" -ne 0 ]
+
 echo
 echo "test-verify: $passed passed, $failed failed"
 [ "$failed" -eq 0 ]

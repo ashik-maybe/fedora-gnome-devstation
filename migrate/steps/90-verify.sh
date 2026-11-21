@@ -5,14 +5,23 @@
 # itself never exits: a nonzero script exit becomes a nonzero step_run()
 # return for the runner.
 
-step_run() {
-	rm -f "$STATE_DIR/converted"
-	"$REPO_DIR/files/verify-devstation.sh" || return 1
-	mkdir -p "$STATE_DIR"
+step_run() (
+	set -euo pipefail
+
+	: "${REPO_DIR:?REPO_DIR must be set}"
+	: "${STATE_DIR:?STATE_DIR must be set}"
+
+	rm -f -- "$STATE_DIR/converted"
+	"$REPO_DIR/files/verify-devstation.sh"
+
+	mkdir -p -- "$STATE_DIR"
 	: >"$STATE_DIR/converted"
-	return 0
-}
+	[ -f "$STATE_DIR/converted" ] || {
+		printf '90-verify: converted marker was not written: %s\n' "$STATE_DIR/converted" >&2
+		exit 1
+	}
+)
 
 step_plan() {
-	echo "run the verification gate: $REPO_DIR/files/verify-devstation.sh"
+	echo "run the verification gate: ${REPO_DIR:-<REPO_DIR>}/files/verify-devstation.sh"
 }
