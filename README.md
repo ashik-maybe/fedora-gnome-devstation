@@ -461,7 +461,7 @@ one does. Finding out after a 15-minute install is worse than failing the build.
 ## Building
 
 Everything goes through `build.sh`; `just` is a thin wrapper around it, and the
-GitHub workflow only validates the kickstart.
+GitHub workflow validates the kickstart and the in-place converter.
 
 ```bash
 ./build.sh deps       # lorax, pykickstart, xorriso, isomd5sum, podman
@@ -486,7 +486,7 @@ With `just`, the same steps are `just fetch-base`, `just deps-test`, `just build
 - ~14 GB of free disk for the offline ISO (~900 MB netinst, ~2 GB package tree,
   ~3 GB output, plus scratch)
 - network access on the first build
-- `sudo`, for `./build.sh deps` and the single `mkksiso` step
+- `sudo`, for `./build.sh deps`, `./build.sh deps-test` and the single `mkksiso` step
 
 `out/`, `packages/`, `cache/` and `build/` are git-ignored; a clone builds as
 is, and the offline tree re-resolves itself whenever the kickstart changes.
@@ -541,6 +541,7 @@ kickstart/gnome-devstation.ks   The image definition. Everything else supports i
 files/90-devstation.sh          System-wide bash quality-of-life.
 files/dconf-profile-user        dconf profile: user db + system db.
 files/dconf-00-devstation       Pre-enables Caffeine and appindicator.
+files/verify-devstation.sh      Shared gate for the ISO install and the converter.
 repos/google-chrome.repo        Shipped to /etc/yum.repos.d.
 repos/helium-copr.repo          Shipped, enabled, Helium not installed.
 build.sh                        All build entry points, online and offline.
@@ -550,16 +551,19 @@ scripts/resolve-packages.sh     Downloads that list into packages/.
 scripts/make-offline-ks.py      Writes the offline ISO's kickstart.
 scripts/preflight.sh            Environment readiness check, before the heavy steps.
 scripts/test-iso.sh             Content + boot test of a built ISO.
+migrate/                        In-place converter: ordered steps and self-tests.
 justfile                        Thin wrappers around build.sh.
-.github/workflows/              Kickstart validation on push and PR.
+.github/workflows/              Kickstart and converter validation on push and pull request.
 ```
 
-One note on CI: the GitHub workflow only runs the kickstart check on push and
-pull request, and nothing else. It never downloads the netinst, never builds an
-ISO, and never stores an artifact. The ISOs are built on the machine that will
-install them, which is also what keeps the image out of public artifact
-storage: it embeds third-party packages (Chrome, RPM Fusion nonfree, vendor
-firmware blobs) whose redistribution terms are not ours to grant.
+One note on CI: the GitHub workflow runs kickstart validation, `bash -n` and
+ShellCheck on the converter scripts, `py_compile` on `manifest.py`, every
+converter self-test, and the opt-in e2e harness self-test on push and pull
+request. It still never downloads the netinst, never builds an ISO, and never
+stores an artifact. The ISOs are built on the machine that will install them,
+which is also what keeps the image out of public artifact storage: it embeds
+third-party packages (Chrome, RPM Fusion nonfree, vendor firmware blobs) whose
+redistribution terms are not ours to grant.
 
 ## Troubleshooting
 
