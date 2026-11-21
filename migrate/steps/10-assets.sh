@@ -210,7 +210,7 @@ step_run() (
 		hash=${_ASSETS_HASHES[$i]}
 		dest="$ASSETS_DIR/$name"
 		[ -f "$dest" ] && [ ! -L "$dest" ] || {
-			state_log "assets: missing $dest"
+			state_log "assets: $dest is missing or a symlink"
 			return 1
 		}
 		have=$(_assets_hash_of "$dest") || {
