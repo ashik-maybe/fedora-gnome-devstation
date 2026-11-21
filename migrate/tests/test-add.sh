@@ -68,7 +68,9 @@ opts_before="$(set +o)"
 source "$step_file"
 opts_after="$(set +o)"
 [ "$opts_before" = "$opts_after" ]
-check $? "sourcing 50-add.sh leaves caller shell options unchanged"
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "sourcing 50-add.sh leaves caller shell options unchanged"
 
 # --- success path: test first, then apply, with the exclude list ------------
 : >"$STUB_DNF_LOG"
@@ -78,28 +80,44 @@ check "$rc" "step_run returns 0 on a clean transaction"
 
 mapfile -t calls <"$STUB_DNF_LOG"
 [ "${#calls[@]}" -eq 2 ]
-check $? "exactly two dnf calls are made (test then apply)"
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "exactly two dnf calls are made (test then apply)"
 
 [ "${calls[0]:-}" = "CALL --assumeno install --repofrompath=migrate,file:///staged/rpms --disablerepo=* --setopt=cachedir=$tmp/state/dnf-cache kernel git --exclude=gnome-software,gnome-tour" ]
-check $? "transaction-test runs first with --assumeno, local repo, cache and excludes"
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "transaction-test runs first with --assumeno, local repo, cache and excludes"
 
 [ "${calls[1]:-}" = "CALL -y install --repofrompath=migrate,file:///staged/rpms --disablerepo=* --setopt=cachedir=$tmp/state/dnf-cache kernel git --exclude=gnome-software,gnome-tour" ]
-check $? "apply runs second with -y using the same arguments"
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "apply runs second with -y using the same arguments"
 
 grep -q -- '--exclude=gnome-software,gnome-tour' "$STUB_DNF_LOG"
-check $? "comma-joined remove list is passed via --exclude"
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "comma-joined remove list is passed via --exclude"
 
 grep -q -- '--repofrompath=migrate,file:///staged/rpms' "$STUB_DNF_LOG"
-check $? "staged local repo from rpms_dnf_arg is used"
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "staged local repo from rpms_dnf_arg is used"
 
 grep -q -- "--setopt=cachedir=$tmp/state/dnf-cache" "$STUB_DNF_LOG"
-check $? "dnf cache is kept under STATE_DIR"
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "dnf cache is kept under STATE_DIR"
 
 [ "$(wc -l <"$STUB_PY_LOG")" -eq 1 ]
-check $? "manifest.py is invoked once from the kickstart"
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "manifest.py is invoked once from the kickstart"
 
 [ -f "$tmp/manifest/add.txt" ] && [ -f "$tmp/manifest/remove.txt" ]
-check $? "add/remove lists are generated into MANIFEST_DIR"
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "add/remove lists are generated into MANIFEST_DIR"
 
 # --- a failed transaction test prevents the apply ---------------------------
 : >"$STUB_DNF_LOG"
@@ -107,27 +125,40 @@ export STUB_DNF_TEST_FAIL=1
 if step_run; then rc=0; else rc=$?; fi
 unset STUB_DNF_TEST_FAIL
 [ "$rc" -ne 0 ]
-check $? "step_run fails loudly when the transaction test fails"
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "step_run fails loudly when the transaction test fails"
 [ "$(wc -l <"$STUB_DNF_LOG")" -eq 1 ]
-check $? "only the transaction test runs when it fails"
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "only the transaction test runs when it fails"
 grep -q -- '--assumeno' "$STUB_DNF_LOG" && ! grep -q -- ' -y ' "$STUB_DNF_LOG"
-check $? "a failed test never reaches the -y apply"
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "a failed test never reaches the -y apply"
 
 # --- DRY_RUN tests but never applies ----------------------------------------
 : >"$STUB_DNF_LOG"
+# shellcheck disable=SC2034 # read by the sourced step under test
 DRY_RUN=1
 if step_run; then rc=0; else rc=$?; fi
 unset DRY_RUN
 check "$rc" "step_run succeeds in DRY_RUN after a passing test"
 [ "$(wc -l <"$STUB_DNF_LOG")" -eq 1 ]
-check $? "DRY_RUN makes exactly one dnf call"
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "DRY_RUN makes exactly one dnf call"
 grep -q -- '--assumeno' "$STUB_DNF_LOG" && ! grep -q -- ' -y ' "$STUB_DNF_LOG"
-check $? "DRY_RUN never applies (-y)"
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "DRY_RUN never applies (-y)"
 
 # --- step_plan is a harmless one-liner --------------------------------------
 plan="$(step_plan)"
 [ -n "$plan" ] && [ "$(printf '%s\n' "$plan" | wc -l)" -eq 1 ]
-check $? "step_plan prints a single description line"
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "step_plan prints a single description line"
 
 if [ "$fails" -eq 0 ]; then
 	printf 'all checks passed\n'
