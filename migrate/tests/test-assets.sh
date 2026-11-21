@@ -20,8 +20,8 @@ fail() {
 pass() { printf 'ok: %s\n' "$*"; }
 
 NAMES=(
-	rpmfusion-free-release-45.noarch.rpm
-	rpmfusion-nonfree-release-45.noarch.rpm
+	rpmfusion-free-release.noarch.rpm
+	rpmfusion-nonfree-release.noarch.rpm
 	google-chrome.asc
 	helium-copr.asc
 )
@@ -132,7 +132,7 @@ while read -r hash name extra || [ -n "${hash:-}${name:-}" ]; do
 	[[ $hash =~ ^[0-9a-f]{64}$ ]] || fail "bad checksum in committed manifest: ${hash}"
 	[ -z "${extra:-}" ] || fail "malformed committed manifest line: $hash $name $extra"
 	case $name in
-	rpmfusion-free-release-45.noarch.rpm | rpmfusion-nonfree-release-45.noarch.rpm | google-chrome.asc | helium-copr.asc) ;;
+	rpmfusion-free-release.noarch.rpm | rpmfusion-nonfree-release.noarch.rpm | google-chrome.asc | helium-copr.asc) ;;
 	*) fail "unexpected basename in committed manifest: ${name}" ;;
 	esac
 	count=$((count + 1))

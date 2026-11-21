@@ -7,12 +7,13 @@
 # never calls exit, and does its work in a subshell function so that the
 # runner's variables and options are left untouched.
 #
-# The manifest is pinned to FEDORA_RELEASE=45.  Both the basenames and the
-# URLs below are the Fedora 45 values fetched by build.sh:109-114.
+# The manifest is pinned to FEDORA_RELEASE=45. Local basenames match the
+# kickstart's asset names; only the URLs carry the Fedora release number
+# (build.sh:109-114).
 
 _ASSETS_KNOWN=(
-	rpmfusion-free-release-45.noarch.rpm
-	rpmfusion-nonfree-release-45.noarch.rpm
+	rpmfusion-free-release.noarch.rpm
+	rpmfusion-nonfree-release.noarch.rpm
 	google-chrome.asc
 	helium-copr.asc
 )
@@ -40,10 +41,10 @@ _assets_manifest_path() {
 
 _assets_url_for() {
 	case $1 in
-	rpmfusion-free-release-45.noarch.rpm)
+	rpmfusion-free-release.noarch.rpm)
 		printf '%s\n' 'https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-45.noarch.rpm'
 		;;
-	rpmfusion-nonfree-release-45.noarch.rpm)
+	rpmfusion-nonfree-release.noarch.rpm)
 		printf '%s\n' 'https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-45.noarch.rpm'
 		;;
 	google-chrome.asc)
