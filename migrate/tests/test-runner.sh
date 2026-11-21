@@ -10,7 +10,7 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/migrate-runner.XXXXXX")"
 trap 'rm -rf -- "$TMP"' EXIT
 
 REPO="$TMP/repo"
-mkdir -p "$REPO/migrate/lib" "$REPO/migrate/steps" "$REPO/migrate/files"
+mkdir -p "$REPO/migrate/lib" "$REPO/migrate/steps" "$REPO/files"
 cp -- "$_SRC_REPO/migrate/migrate.sh" "$REPO/migrate/migrate.sh"
 cp -- "$_SRC_REPO/migrate/lib/runner.sh" "$REPO/migrate/lib/runner.sh"
 chmod +x "$REPO/migrate/migrate.sh"
@@ -68,11 +68,11 @@ step_run() {
 step_plan() { state_log "PLAN 20-third detail"; }
 EOF
 
-cat >"$REPO/migrate/files/verify-devstation.sh" <<'EOF'
+cat >"$REPO/files/verify-devstation.sh" <<'EOF'
 #!/usr/bin/env bash
 printf 'GATE ROOT=%s\n' "${ROOT:-unset}"
 EOF
-chmod +x "$REPO/migrate/files/verify-devstation.sh"
+chmod +x "$REPO/files/verify-devstation.sh"
 
 # --- assertions ------------------------------------------------------------
 fail() {

@@ -158,7 +158,7 @@ runner_verify_all() {
 		return 1
 	fi
 
-	gate="$REPO_DIR/migrate/files/verify-devstation.sh"
+	gate="$REPO_DIR/files/verify-devstation.sh"
 	if [[ -f "$gate" ]]; then
 		state_log "VERIFY gate $gate"
 		if [[ -x "$gate" ]]; then
