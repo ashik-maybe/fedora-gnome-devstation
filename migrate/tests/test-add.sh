@@ -153,6 +153,47 @@ grep -q -- '--assumeno' "$STUB_DNF_LOG" && ! grep -q -- ' -y ' "$STUB_DNF_LOG"
 rc=$?
 check "$rc" "DRY_RUN never applies (-y)"
 
+# --- repo arg with spaces must not be word-split ----------------------------
+: >"$STUB_DNF_LOG"
+cat >"$tmp/bin/dnf" <<'STUB'
+#!/usr/bin/env bash
+for arg in "$@"; do
+	printf 'ARG\t%s\n' "$arg"
+done >>"$STUB_DNF_LOG"
+if [[ " $* " == *" --assumeno "* ]] && [ "${STUB_DNF_TEST_FAIL:-0}" = 1 ]; then
+	printf 'stub dnf: forced transaction-test failure\n' >&2
+	exit 1
+fi
+exit 0
+STUB
+chmod +x "$tmp/bin/dnf"
+# _LIB_RPMS_LOADED is set inside step_run's subshell only, so force it here
+# to prevent step_run from re-sourcing the stub lib and overwriting our override.
+_LIB_RPMS_LOADED=1
+rpms_dnf_arg() {
+	printf '%s\n' '--repofrompath=migrate,file:///staged/rpm dir'
+}
+if step_run; then rc=0; else rc=$?; fi
+# restore stubs
+rpms_dnf_arg() {
+	printf '%s\n' '--repofrompath=migrate,file:///staged/rpms'
+}
+cat >"$tmp/bin/dnf" <<'STUB'
+#!/usr/bin/env bash
+printf 'CALL %s\n' "$*" >>"$STUB_DNF_LOG"
+if [[ " $* " == *" --assumeno "* ]] && [ "${STUB_DNF_TEST_FAIL:-0}" = 1 ]; then
+	printf 'stub dnf: forced transaction-test failure\n' >&2
+	exit 1
+fi
+exit 0
+STUB
+chmod +x "$tmp/bin/dnf"
+check "$rc" "step_run succeeds when rpms_dnf_arg path contains spaces"
+grep -qxF $'ARG\t--repofrompath=migrate,file:///staged/rpm dir' "$STUB_DNF_LOG"
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "rpms_dnf_arg with spaces is passed as a single dnf argument"
+
 # --- step_plan is a harmless one-liner --------------------------------------
 plan="$(step_plan)"
 [ -n "$plan" ] && [ "$(printf '%s\n' "$plan" | wc -l)" -eq 1 ]

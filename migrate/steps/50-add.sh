@@ -109,8 +109,7 @@ step_run() (
 		_step50_log "rpms_dnf_arg failed"
 		return 1
 	fi
-	local -a repo_args=()
-	read -r -a repo_args <<<"$repo_arg"
+	local -a repo_args=("$repo_arg")
 
 	local cache_dir="$state_dir/dnf-cache"
 	local -a dnf_args=(
