@@ -42,6 +42,7 @@ done
 STAGE_LOG="$FIXTURE/stage.log"
 : >"$STAGE_LOG" || exit 1
 download_stage() {
+	# shellcheck disable=SC2034 # url is positional; the stub only needs dest/want
 	local url=$1 dest=$2 want=$3 base have got
 	base=${dest##*/}
 	printf '%s\n' "$base" >>"$STAGE_LOG"

@@ -67,6 +67,7 @@ printf '%s\n' "$out" | grep -qF 'install -y --system flathub it.mijorus.gearleve
 # Scenario 4: ROOT != / — the live host; the stub records zero calls and the
 # step returns 0.
 : >"$LOG"
+# shellcheck disable=SC2034 # read by the sourced step under test
 ROOT="$TMP/root"
 status=0
 step_run || status=$?
