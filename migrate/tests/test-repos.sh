@@ -141,6 +141,18 @@ step_run || fail "second step_run returned nonzero"
 	fail "second run rewrote an identical repo file"
 ok "second run performs no Uvh, no import and no repo-file rewrite"
 
+# --- FORCE=1 re-imports keys despite markers --------------------------------
+imp_before_force="$(grep -c -- '--import' "$rpm_log" || true)"
+FORCE=1
+step_run || fail "FORCE step_run returned nonzero"
+[ "$(grep -c -- '--import' "$rpm_log" || true)" -gt "$imp_before_force" ] ||
+	fail "FORCE=1 did not re-import keys when markers were present"
+for key in google-chrome.asc helium-copr.asc; do
+	[ -f "$STATE_DIR/imported-keys/$key.imported" ] ||
+		fail "FORCE=1 did not refresh the import marker for $key"
+done
+ok "FORCE=1 re-imports keys and refreshes markers"
+
 # --- ROOT != / is refused ---------------------------------------------------
 setup_workspace "$work/root-guard"
 ROOT="$FAKE_ROOT"

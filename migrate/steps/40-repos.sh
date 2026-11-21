@@ -61,6 +61,7 @@ step_run() (
 	local assets_dir="${ASSETS_DIR:-${STATE_DIR:-/var/lib/gnome-devstation-migrate}/assets}"
 	local state_dir="${STATE_DIR:-/var/lib/gnome-devstation-migrate}"
 	local dry_run="${DRY_RUN:-0}"
+	local force="${FORCE:-0}"
 	local key_dir="$state_dir/imported-keys"
 	local repos_target="${REPOS_TARGET:-$root/etc/yum.repos.d}"
 
@@ -128,7 +129,7 @@ step_run() (
 	# without having to parse gpg-pubkey package names from `rpm -qa`.
 	for key in "${__repos_keys[@]}"; do
 		key_marker="$key_dir/$key.imported"
-		if [ -f "$key_marker" ]; then
+		if [ "$force" != 1 ] && [ -f "$key_marker" ]; then
 			state_log "$key already imported; skip"
 			continue
 		fi
@@ -141,7 +142,11 @@ step_run() (
 			state_log "DRY RUN: would rpm --import $assets_dir/$key"
 			continue
 		fi
-		state_log "importing $key (rpm --import)"
+		if [ "$force" = 1 ] && [ -f "$key_marker" ]; then
+			state_log "FORCE=1: re-importing $key (rpm --import)"
+		else
+			state_log "importing $key (rpm --import)"
+		fi
 		if ! rpm --import "$assets_dir/$key"; then
 			state_log "FAILED to import $key"
 			failed=1
