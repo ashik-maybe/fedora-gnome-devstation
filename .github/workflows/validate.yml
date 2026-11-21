@@ -1,8 +1,10 @@
 name: validate
 
-# CI only validates the spin definition: the kickstart and the shell embedded
-# in it. The ISOs are built on the machine that will install them (see
-# README.md, "Building"); nothing is published or retained here.
+# CI validates the spin definition: the kickstart and the shell embedded in
+# it, plus the in-place converter (migrate/*) and the shared gates
+# files/verify-devstation.sh and scripts/expand-packages.py. The ISOs are
+# built on the machine that will install them (see README.md, "Building");
+# nothing is published or retained here.
 
 on:
   push:
@@ -10,8 +12,11 @@ on:
     paths:
       - "kickstart/**"
       - "files/**"
+      - "files/verify-devstation.sh"
+      - "migrate/**"
       - "repos/**"
       - "scripts/**"
+      - "scripts/expand-packages.py"
       - "build.sh"
       - "justfile"
       - ".github/workflows/validate.yml"
@@ -19,8 +24,11 @@ on:
     paths:
       - "kickstart/**"
       - "files/**"
+      - "files/verify-devstation.sh"
+      - "migrate/**"
       - "repos/**"
       - "scripts/**"
+      - "scripts/expand-packages.py"
       - "build.sh"
       - "justfile"
       - ".github/workflows/validate.yml"
@@ -38,6 +46,59 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install pykickstart
         run: dnf install -y pykickstart
+      # python3 powers the converter's py_compile and self-tests; ShellCheck
+      # provides `shellcheck`; diffutils provides `cmp`, which 70-config.sh
+      # and 40-repos.sh use to keep staged config and repo files idempotent.
+      # A partial install fails later with a confusing error.
+      - name: Install python3, ShellCheck and diffutils
+        run: dnf install -y python3 ShellCheck diffutils
+      # bash -n every shell file the converter ships: the entry point, its
+      # libraries, the steps and the tests, plus the shared gate. A missing
+      # file is a clear failure, not a silent skip.
+      - name: Syntax-check converter shell
+        run: |
+          set -euo pipefail
+          for f in migrate/migrate.sh migrate/lib/*.sh migrate/steps/*.sh \
+                   migrate/tests/*.sh files/verify-devstation.sh; do
+            [ -e "$f" ] || { echo "MISSING: $f" >&2; exit 1; }
+            bash -n "$f"
+          done
+      # The converter manifest generator.
+      - name: Compile-check manifest.py
+        run: python3 -m py_compile migrate/manifest.py
+      # Shellcheck the same files. -s bash covers the sourced libraries and
+      # steps, which have no shebang of their own; SC1090/SC1091 are excluded
+      # because libraries are sourced through "$REPO_DIR/migrate/lib/<name>.sh"
+      # variable paths that shellcheck cannot follow. -S warning keeps purely
+      # informational findings (e.g. SC2015 in tests) from failing CI.
+      - name: Shellcheck converter scripts
+        run: |
+          set -euo pipefail
+          for f in migrate/migrate.sh migrate/lib/*.sh migrate/steps/*.sh \
+                   migrate/tests/*.sh files/verify-devstation.sh; do
+            [ -e "$f" ] || { echo "MISSING: $f" >&2; exit 1; }
+            shellcheck -s bash -S warning -e SC1090,SC1091 "$f"
+          done
+      # The converter is self-contained: run EVERY unit test, not a hand-maintained
+      # subset (a new step's test must fail CI if it breaks).
+      - name: Run converter self-tests
+        run: |
+          set -euo pipefail
+          count=0
+          for t in migrate/tests/test-*.sh; do
+            [ -f "$t" ] || { echo "MISSING: $t" >&2; exit 1; }
+            echo "== $t =="
+            bash "$t"
+            count=$((count + 1))
+          done
+          [ "$count" -ge 14 ] || { echo "only $count converter tests found" >&2; exit 1; }
+      # The VM harness must stay opt-in, but its stubbed self-test and skip
+      # path are cheap and prove the driver is wired up.
+      - name: Check the opt-in VM harness
+        run: |
+          set -euo pipefail
+          bash migrate/tests/e2e.sh --self-test
+          bash migrate/tests/e2e.sh
       # build.sh check runs ksvalidator and then `bash -n` on every
       # %pre/%post block, which is the part ksvalidator cannot see.
       - name: Validate kickstart

@@ -10,7 +10,7 @@
 #               (proves the ISO's rewritten EFI loader works)
 #
 # A full install needs your machine and virt-manager; this catches the cheap
-# ways the ISO can be broken first. Run ./build.sh deps for qemu + OVMF.
+# ways the ISO can be broken first. Run ./build.sh deps-test for qemu + OVMF.
 #
 # Usage: scripts/test-iso.sh [PATH-TO-ISO] [--no-efi] [--no-serial]
 set -uo pipefail
@@ -49,7 +49,7 @@ iso="$(readlink -f "$iso")"
 echo "test-iso: $iso ($(du -h "$iso" | cut -f1))"
 
 command -v xorriso >/dev/null || {
-	echo "test-iso: xorriso missing (./build.sh deps)" >&2
+	echo "test-iso: xorriso missing (./build.sh deps-test)" >&2
 	exit 1
 }
 

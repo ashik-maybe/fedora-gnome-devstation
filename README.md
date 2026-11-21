@@ -2,9 +2,8 @@
 
 A Fedora 45 GNOME desktop image for developers, built from the Fedora Everything
 netinst with `mkksiso` and a kickstart. It ships the full GNOME session, the
-media stack Fedora leaves out, a developer toolchain, and — as of this version —
-every firmware package and driver Fedora offers, so it boots on whatever machine
-it lands on.
+media stack Fedora leaves out, a developer toolchain, and firmware for common
+laptop and desktop hardware, so it boots on a wide range of machines.
 
 No themes. No dotfiles. No kernel arguments. No custom `sysctl` files. If
 upstream GNOME or Fedora changes a default, this image inherits the change
@@ -32,7 +31,7 @@ instead of fighting it.
 
 It is the **Fedora Workstation environment group**, minus the applications
 nobody uses on a development machine, plus a toolchain, RPM Fusion's codec
-packages, and every firmware package.
+packages, and firmware for common laptop and desktop hardware.
 
 It is **not** a minimal install and not a tuned image:
 
@@ -151,8 +150,8 @@ want to try the other one.
 
 ### Firmware and drivers
 
-This is the catch-all part. Every firmware package Fedora ships is installed,
-so the image does not assume which hardware it lands on:
+This is the catch-all part. It installs firmware for common laptop and desktop
+hardware, so the image does not assume which machine it lands on:
 
 ```
 alsa-sof-firmware      intel-audio-firmware   cirrus-audio-firmware
@@ -366,6 +365,27 @@ Partitioning, `rootpw` and user creation are deliberately not in the kickstart.
 If they were, Anaconda would install unattended and you would never see the GUI.
 Leaving them out is what keeps the installer interactive.
 
+### The other install path: convert a fresh Fedora 45 Workstation in place
+
+You do not have to boot an ISO. A **fresh Fedora 45 Workstation** can be turned
+into this same machine in place, with the converter:
+
+```bash
+sudo dnf install -y git
+git clone <this-repo> && cd gnome-devstation
+sudo migrate/migrate.sh --plan          # show the work, change nothing
+sudo migrate/migrate.sh                 # apply; re-run to resume
+```
+
+It reads the same `kickstart/gnome-devstation.ks` at run time and adds the same
+repositories, packages, removals and configuration as the ISO. It stays
+Fedora-branded: no release swap, no custom identity, no theme. The run is staged
+and resumable, so a Ctrl+C or a lost network connection does not start it over.
+
+This is an in-place package change, not an atomic image swap — back the machine
+up first. See [migrate/README.md](migrate/README.md) for the prerequisites, the
+ten steps, resume and corruption recovery, command-line options and rollback.
+
 ### What "offline" does and does not cover
 
 The offline ISO embeds the resolved RPM closure (~2 GB) as a `createrepo_c`
@@ -445,6 +465,7 @@ GitHub workflow only validates the kickstart.
 
 ```bash
 ./build.sh deps       # lorax, pykickstart, xorriso, isomd5sum, podman
+./build.sh deps-test  # qemu, socat, OVMF and xorriso; only needed for test-iso
 ./build.sh base       # netinst ISO + RPM Fusion release RPMs + keys + comps
 ./build.sh online     # out/gnome-devstation-45-x86_64.iso          (~1.3 GB)
 ./build.sh offline    # out/gnome-devstation-45-x86_64-offline.iso  (~2.9 GB)
@@ -454,7 +475,7 @@ GitHub workflow only validates the kickstart.
 ./build.sh test-iso   # content + boot test of an out/*.iso (pass its path)
 ```
 
-With `just`, the same steps are `just fetch-base`, `just build`,
+With `just`, the same steps are `just fetch-base`, `just deps-test`, `just build`,
 `just build-offline`, `just packages`, `just check`, `just preflight`,
 `just test-iso`.
 
@@ -546,8 +567,8 @@ firmware blobs) whose redistribution terms are not ours to grant.
   build and `fuse-libs` is missing. It is in the image; if you see this on a
   different machine, install `fuse-libs`.
 - **No network after install** — check `ip link` and `nmcli device status`. The
-  image carries every wireless firmware package, so a missing blob is not the
-  usual cause; a regulatory-domain problem is. `sudo fwupdmgr refresh &&
+  image carries firmware for common wireless hardware, so a missing blob is
+  not the usual cause; a regulatory-domain problem is. `sudo fwupdmgr refresh &&
   sudo fwupdmgr update` sometimes fixes a stale `wireless-regdb`.
 - **NVIDIA black screen** — `akmod-nvidia` builds at install time. If the build
   failed, the install still succeeded and you get nouveau. Rebuild with

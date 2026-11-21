@@ -7,6 +7,7 @@
 # single command and leaves every download and the output owned by you.
 #
 #   ./build.sh deps       install the build dependencies (Fedora host)
+#   ./build.sh deps-test  install qemu, socat, OVMF and xorriso; needed for test-iso
 #   ./build.sh base       download the netinst ISO, the repo assets and comps
 #   ./build.sh check      validate the kickstart and its %pre/%post shell
 #   ./build.sh preflight  environment readiness: disk, tools, mirrors, container
@@ -259,6 +260,9 @@ build_offline() {
 case "${1:-}" in
 deps)
 	sudo dnf install -y lorax pykickstart xorriso isomd5sum podman curl zstd python3
+	;;
+deps-test)
+	sudo dnf install -y qemu-system-x86_64 socat edk2-ovmf xorriso
 	;;
 base) base ;;
 check) check ;;
