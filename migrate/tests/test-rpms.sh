@@ -25,6 +25,7 @@ export DNF_FAIL_FILE="$TMP/dnf_fail"
 export DNF_FILEMAP="$TMP/dnf_filemap"
 export DNF_RESOLVE_EXTRAS="$TMP/dnf_resolve_extras"
 export DNF_RESOLVE_EXTRAS_REFETCH="$TMP/dnf_resolve_extras_refetch"
+export DNF_NORESOLVE_EXTRAS="$TMP/dnf_noresolve_extras"
 export DNF_STAGED_LOG="$TMP/dnf_staged.log"
 
 ok() {
@@ -50,6 +51,7 @@ reset_case() {
 	: >"$DNF_FILEMAP"
 	: >"$DNF_RESOLVE_EXTRAS"
 	: >"$DNF_RESOLVE_EXTRAS_REFETCH"
+	: >"$DNF_NORESOLVE_EXTRAS"
 	: >"$DNF_STAGED_LOG"
 	unset RPM_K_ALWAYS_FAIL RPM_QP_FAIL
 }
@@ -133,6 +135,13 @@ for p in "${pkgs[@]}"; do
 				fi
 			done < "$extras_file"
 		fi
+	elif [ -f "${DNF_NORESOLVE_EXTRAS:-}" ]; then
+		while IFS=' ' read -r trig extra; do
+			[ -n "$trig" ] || continue
+			if [ "$trig" = "$p" ]; then
+				: > "$dest/$extra"
+			fi
+		done < "$DNF_NORESOLVE_EXTRAS"
 	fi
 done
 EOF
@@ -153,15 +162,24 @@ for last; do
 	file="$last"
 done
 base="$(basename "$file" .rpm)"
-name="$base"
+epoch=""
+noepoch="$base"
+nevra="$base"
+# Detect optional epoch: name-epoch:version-release.arch
+if [[ "$base" =~ ^(.*)-([0-9]+):([0-9].*)$ ]]; then
+	epoch="${BASH_REMATCH[2]}"
+	noepoch="${BASH_REMATCH[1]}-${BASH_REMATCH[3]}"
+	nevra="$base"
+fi
+name="$noepoch"
 if [ -f "${RPM_NAME_MAP:-}" ]; then
 	mapped="$(awk -v b="$base.rpm" '$1==b {print $2; exit}' "$RPM_NAME_MAP")"
 	[ -n "$mapped" ] && name="$mapped"
 fi
-if [ "$name" = "$base" ]; then
+if [ "$name" = "$noepoch" ]; then
 	# Heuristic: NAME is everything before the first "-<digit>" (NEVRA split).
-	name="$(printf '%s\n' "$base" | sed -E 's/-[0-9].*$//')"
-	[ -n "$name" ] || name="$base"
+	name="$(printf '%s\n' "$noepoch" | sed -E 's/-[0-9].*$//')"
+	[ -n "$name" ] || name="$noepoch"
 fi
 if [ "${1:-}" = "-K" ]; then
 	if [ "${RPM_K_ALWAYS_FAIL:-0}" = 1 ]; then
@@ -183,7 +201,11 @@ elif [ "${1:-}" = "-qp" ]; then
 		fi
 	done
 	case "$fmt" in
-		*%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}*|*%{NEVRA}*) printf '%s\n' "$base" ;;
+		*%{NEVRA}*) printf '%s\n' "$nevra" ;;
+		*EPOCH?*%{VERSION}-%{RELEASE}.%{ARCH}*) printf '%s\n' "$nevra" ;;
+		*%{EPOCH}*%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}*|*%{NAME}-%{EPOCH}:%{VERSION}-%{RELEASE}.%{ARCH}*) printf '%s\n' "$nevra" ;;
+		*%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}*) printf '%s\n' "$noepoch" ;;
+		*%{EPOCH}*) printf '%s\n' "${epoch:-0}" ;;
 		*%{NAME}*) printf '%s\n' "$name" ;;
 		*) printf '%s\n' "$base" ;;
 	esac
@@ -380,6 +402,98 @@ if [ -z "$dup_names" ]; then
 	ok "case(d): no duplicate package names in staged tree"
 else
 	bad "case(d): duplicate package names in staged tree: $dup_names"
+fi
+
+# --- case (e): stray file on no-resolve refetch is removed -------------------
+
+reset_case
+printf 'foo foo-1.0-1.fc40.x86_64.rpm\n' >"$DNF_FILEMAP"
+printf 'foo-1.0-1.fc40.x86_64.rpm\n' >"$BAD_RPM_FILES"
+printf 'foo-1.0-1.fc40.x86_64 stray-1.0-1.fc40.noarch.rpm\n' >"$DNF_NORESOLVE_EXTRAS"
+printf 'foo\n' >"$TMP/add-e.txt"
+
+if rpms_stage "$TMP/add-e.txt" >"$TMP/e.out" 2>"$TMP/e.err"; then
+	ok "case(e): rpms_stage completed"
+else
+	bad "case(e): rpms_stage failed: $(cat "$TMP/e.err")"
+fi
+if grep -q "removing unexpected refetch artifact 'stray-1.0-1.fc40.noarch.rpm'" "$TMP/e.err"; then
+	ok "case(e): stray refetch artifact removal was logged"
+else
+	bad "case(e): missing removal log: $(cat "$TMP/e.err")"
+fi
+if [ -e "$RPMS_DIR/stray-1.0-1.fc40.noarch.rpm" ]; then
+	bad "case(e): stray refetch artifact remains in $RPMS_DIR"
+else
+	ok "case(e): stray refetch artifact removed from $RPMS_DIR"
+fi
+if [ -f "$RPMS_DIR/foo-1.0-1.fc40.x86_64.rpm" ]; then
+	ok "case(e): requested rpm still staged"
+else
+	bad "case(e): requested rpm missing from $RPMS_DIR"
+fi
+
+# --- case (f): duplicate NEVRAs of same requested NAME are deduped -----------
+
+reset_case
+printf 'foo foo-1.0-1.fc40.x86_64.rpm\n' >"$DNF_FILEMAP"
+printf 'foo foo-2.0-1.fc40.x86_64.rpm\n' >"$DNF_RESOLVE_EXTRAS"
+printf 'foo\n' >"$TMP/add-f.txt"
+
+if rpms_stage "$TMP/add-f.txt" >"$TMP/f.out" 2>"$TMP/f.err"; then
+	ok "case(f): rpms_stage completed"
+else
+	bad "case(f): rpms_stage failed: $(cat "$TMP/f.err")"
+fi
+foo_count="$(
+	for f in "$RPMS_DIR"/*.rpm; do
+		[ -e "$f" ] || continue
+		rpm -qp --nosignature --qf '%{NAME}\n' "$f" 2>/dev/null || true
+	done | awk '$1=="foo"{c++} END{print c+0}'
+)"
+if [ "$foo_count" -eq 1 ]; then
+	ok "case(f): exactly one foo rpm staged after dedupe"
+else
+	bad "case(f): expected 1 foo rpm, got $foo_count: $(ls "$RPMS_DIR")"
+fi
+if [ -f "$RPMS_DIR/foo-1.0-1.fc40.x86_64.rpm" ]; then
+	ok "case(f): first-seen requested foo NEVRA survives dedupe"
+else
+	bad "case(f): foo-1.0-1.fc40.x86_64.rpm missing; surviving files: $(ls "$RPMS_DIR")"
+fi
+if [ -e "$RPMS_DIR/foo-2.0-1.fc40.x86_64.rpm" ]; then
+	bad "case(f): duplicate foo-2.0-1.fc40.x86_64.rpm still present"
+else
+	ok "case(f): duplicate foo-2.0-1.fc40.x86_64.rpm removed"
+fi
+if grep -q "removing duplicate package 'foo'" "$TMP/f.err"; then
+	ok "case(f): duplicate removal was logged"
+else
+	bad "case(f): missing duplicate removal log: $(cat "$TMP/f.err")"
+fi
+
+# --- case (g): epoch'd rpm refetch uses epoch NEVRA --------------------------
+
+reset_case
+printf 'foo foo-2:1.0-1.fc40.x86_64.rpm\n' >"$DNF_FILEMAP"
+printf 'foo-2:1.0-1.fc40.x86_64.rpm\n' >"$BAD_RPM_FILES"
+printf 'foo\n' >"$TMP/add-g.txt"
+
+if rpms_stage "$TMP/add-g.txt" >"$TMP/g.out" 2>"$TMP/g.err"; then
+	ok "case(g): rpms_stage completed for epoch'd rpm"
+else
+	bad "case(g): rpms_stage failed: $(cat "$TMP/g.err")"
+fi
+refetch_call_g="$(awk '/^---$/{n++; next} n==1{print}' "$DNF_CALL_LOG")"
+if printf '%s\n' "$refetch_call_g" | grep -qxF 'foo-2:1.0-1.fc40.x86_64'; then
+	ok "case(g): refetch requested epoch NEVRA"
+else
+	bad "case(g): refetch call did not request epoch NEVRA: $(printf '%s ' $refetch_call_g)"
+fi
+if [ -f "$RPMS_DIR/foo-2:1.0-1.fc40.x86_64.rpm" ]; then
+	ok "case(g): epoch'd rpm staged"
+else
+	bad "case(g): epoch'd rpm missing: $(ls "$RPMS_DIR")"
 fi
 
 printf 'all tests passed\n'

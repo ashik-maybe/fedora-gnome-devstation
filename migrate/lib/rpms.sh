@@ -64,8 +64,8 @@ rpms_stage() {
 	# Associate every staged file with the requested package name that
 	# produced it. Prefer the rpm NAME header; when the header is unreadable
 	# (a corrupt HEADER breaks `rpm -qp` too) fall back to the file-name
-	# prefix. This keeps the original requested name available for refetch
-	# instead of a NEVRA taken from the file name.
+	# prefix. The mapping keeps the original requested name for logging and
+	# dedupe preference; refetch uses the file's NEVRA, not a bare name.
 	local -A name_to_file file_to_name
 	build_file_map() {
 		local f base req header_name mapped
@@ -99,10 +99,10 @@ rpms_stage() {
 		done
 	}
 
-	# Verify every staged file. A bad one is deleted and re-downloaded using
-	# the original requested package name (never a NEVRA from its file name);
-	# if it still fails after refetches the repo is broken: stop instead of
-	# indexing files we could not verify.
+	# Verify every staged file. A bad one is deleted and re-downloaded by its
+	# original NEVRA (header, with filename fallback), never with --resolve
+	# and never by bare package name. If it still fails after refetches the
+	# repo is broken: stop instead of indexing files we could not verify.
 	local round bad_file req name
 	for round in 1 2 3; do
 		build_file_map
@@ -127,7 +127,7 @@ rpms_stage() {
 				[ -n "$name" ] || name="$(basename "$bad_file" .rpm)"
 			fi
 			local nevra
-			nevra="$(rpm -qp --nosignature --qf '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}\n' "$bad_file" 2>/dev/null || true)"
+			nevra="$(rpm -qp --nosignature --qf '%{NAME}-%|EPOCH?{%{EPOCH}:}:{}|%{VERSION}-%{RELEASE}.%{ARCH}\n' "$bad_file" 2>/dev/null || true)"
 			[ -n "$nevra" ] || nevra="$(basename "$bad_file" .rpm)"
 			echo "rpms_stage: '$name' failed rpm -K; deleting and re-downloading it alone" >&2
 			local -A before_refetch=()
