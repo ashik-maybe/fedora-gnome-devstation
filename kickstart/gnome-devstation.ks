@@ -350,6 +350,10 @@ for f in rpmfusion-free-release.noarch.rpm rpmfusion-nonfree-release.noarch.rpm 
   install -Dm0644 "$assets/$f" "$root/var/tmp/ks-assets/$f"
 done
 
+# The verification gate runs from the chrooted %post below, which cannot
+# rely on the ISO mount staying visible inside the installed root.
+install -Dm0755 "$src/verify-devstation.sh" "$root/var/tmp/ks-assets/verify-devstation.sh"
+
 # Marker written by `build.sh offline`. The chrooted %post uses it to skip the
 # steps that can only work with a network.
 if [ -e /run/install/repo/offline ]; then
@@ -451,83 +455,9 @@ fi
 
 # 8. Verification gate. Every check below is a claim made in README.md, so a
 #    silent regression fails the install instead of shipping a broken image.
-fail=0
-
-for pkg in gnome-shell gdm gnome-shell-extension-caffeine \
-           gnome-shell-extension-appindicator google-chrome-stable \
-           libva-intel-media-driver iwlwifi-mvm-firmware bash tuned-ppd \
-           ffmpeg fuse rpmfusion-free-release rpmfusion-nonfree-release \
-           kernel akmod-nvidia kernel-devel gcc make kernel-headers glibc-devel \
-           kernel-modules-extra mesa-va-drivers-freeworld fwupd gnome-firmware; do
-  if ! rpm -q "$pkg" >/dev/null 2>&1; then
-    echo "MISSING REQUIRED PACKAGE: $pkg" >&2
-    fail=1
-  fi
-done
-
-# The trims must be gone. A package that quietly came back through a weak
-# dependency is exactly the failure this list exists to catch.
-for pkg in firefox libreoffice-writer gnome-boxes gnome-software gnome-tour \
-           gnome-maps gnome-weather rygel gnome-remote-desktop \
-           helium-bin helix; do
-  if rpm -q "$pkg" >/dev/null 2>&1; then
-    echo "PRESENT BUT SHOULD BE TRIMMED: $pkg" >&2
-    fail=1
-  fi
-done
-
-# The AppImage runtime dlopens this exact soname, so check the library rather
-# than trusting the package name. Both paths exist because the package ships
-# one copy for each prefix.
-if ! ldconfig -p | grep -q 'libfuse\.so\.2'; then
-  echo "MISSING LIBFUSE.SO.2: AppImages will not run" >&2
-  fail=1
-fi
-
-# The extensions must actually be enabled for the first login, and the packaged
-# metadata must know about the installed shell major version.
-enabled="$(dconf read /org/gnome/shell/enabled-extensions || true)"
-for uuid in caffeine@patapon.info appindicatorsupport@rgcjonas.gmail.com; do
-  case "$enabled" in
-    *"$uuid"*) ;;
-    *) echo "EXTENSION NOT ENABLED IN DCONF: $uuid (got: $enabled)" >&2; fail=1 ;;
-  esac
-done
-
-shell_major="$(gnome-shell --version | awk '{print $3}' | cut -d. -f1)"
-for uuid in caffeine@patapon.info appindicatorsupport@rgcjonas.gmail.com; do
-  meta="/usr/share/gnome-shell/extensions/$uuid/metadata.json"
-  if [ ! -f "$meta" ] || ! grep -q "\"$shell_major\"" "$meta"; then
-    echo "EXTENSION DOES NOT DECLARE SHELL $shell_major: $uuid" >&2
-    fail=1
-  fi
-done
-
-# Exactly one Power Profiles provider: tuned-ppd in the Workstation environment,
-# never tuned-ppd and power-profiles-daemon at the same time.
-providers="$(rpm -qa --qf '%{NAME}\n' | grep -cxE 'tuned-ppd|power-profiles-daemon' || true)"
-if [ "$providers" -ne 1 ]; then
-  echo "EXPECTED EXACTLY ONE ppd-service PROVIDER, FOUND $providers" >&2
-  fail=1
-fi
-
-# The browser default must point at a desktop file that exists.
-if [ ! -f /usr/share/applications/google-chrome.desktop ]; then
-  echo "MISSING google-chrome.desktop" >&2
-  fail=1
-fi
-if ! grep -q '^x-scheme-handler/https=google-chrome.desktop' /etc/xdg/mimeapps.list; then
-  echo "CHROME IS NOT THE DEFAULT BROWSER" >&2
-  fail=1
-fi
-
-# The bash profile must be in place and syntactically valid.
-if ! bash -n /etc/profile.d/90-devstation.sh; then
-  echo "BASH PROFILE HAS A SYNTAX ERROR" >&2
-  fail=1
-fi
-
-[ "$fail" -eq 0 ] || exit 1
+#    The gate lives in files/verify-devstation.sh so the converter
+#    (migrate/steps/90-verify.sh) runs the same checks.
+bash /var/tmp/ks-assets/verify-devstation.sh
 
 # 9. Hardware decode: report, never fail. VMs have no VA-API device, and this
 #    kickstart must stay installable there.
