@@ -108,7 +108,7 @@ paths() {
 # pass are trusted literals; the surrounding remote command is quoted as a whole
 # by ssh_cmd below.
 conv() {
-	printf 'cd %s && %s migrate/migrate.sh' "$REPO_Q" "$E2E_SUDO"
+	printf 'cd %s && %s migrate/migrate.sh --state-dir %s' "$REPO_Q" "$E2E_SUDO" "$STATE_Q"
 }
 
 # Expand the path/command placeholders in a remote-command template into
@@ -392,7 +392,7 @@ EOF
 			st=1
 		}
 	done
-	grep -qF 'migrate/migrate.sh --verify' "$log" || {
+	grep -qE 'migrate/migrate\.sh.*--verify' "$log" || {
 		echo "self-test: no --verify command was issued" >&2
 		st=1
 	}
@@ -446,6 +446,54 @@ EOF
 	done <"$cmds"
 	[ "$cmd_n" -eq 9 ] || {
 		echo "self-test: expected 9 generated commands, got $cmd_n" >&2
+		st=1
+	}
+
+	# Every generated converter invocation must pass the E2E state dir
+	# explicitly. The harness clears/watches @STATE@, so a converter that
+	# falls back to its default state dir would miss the interrupt/reset
+	# setup on a real VM.
+	local conv_cmd
+	while IFS= read -r line; do
+		if [ "$line" = '@@EOC@@' ]; then
+			case "$conv_cmd" in
+			*migrate/migrate.sh\ --* | *migrate/migrate.sh\ \>* | *migrate/migrate.sh\ \|\|* | *migrate/migrate.sh\'*)
+				case "$conv_cmd" in
+				*"--state-dir "*"tmp/e2e-fake-state"*) ;;
+				*)
+					echo "self-test: generated converter command missing --state-dir for /tmp/e2e-fake-state: $conv_cmd" >&2
+					st=1
+					;;
+				esac
+				;;
+			esac
+			conv_cmd=""
+		else
+			conv_cmd+="${conv_cmd:+$'\n'}$line"
+		fi
+	done <"$cmds"
+
+	# A custom E2E_STATE_DIR with spaces/metacharacters must be passed as
+	# one shell argument, not split or reinterpreted by the remote shell.
+	local special_state_cmd special_state_dir
+	special_state_dir="/tmp/e2e state\$dir;name"
+	special_state_cmd="$(
+		E2E_REPO_DIR='/tmp/e2e-fake-repo'
+		E2E_STATE_DIR="$special_state_dir"
+		E2E_SUDO='sudo'
+		FEDORA_RELEASE='45'
+		paths
+		conv
+	)"
+	case "$special_state_cmd" in
+	*"--state-dir '/tmp/e2e state\$dir;name'"*) ;;
+	*)
+		echo "self-test: special state dir not passed as one quoted --state-dir argument: $special_state_cmd" >&2
+		st=1
+		;;
+	esac
+	printf '%s\n' "$special_state_cmd" | bash -n || {
+		echo "self-test: special-state-dir command has a syntax error: $special_state_cmd" >&2
 		st=1
 	}
 
