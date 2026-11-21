@@ -47,10 +47,11 @@ jobs:
       - name: Install pykickstart
         run: dnf install -y pykickstart
       # python3 powers the converter's py_compile and self-tests; ShellCheck
-      # is the Fedora package that provides the `shellcheck` binary. Both are
-      # required: a partial install would fail later with a confusing error.
-      - name: Install python3 and ShellCheck
-        run: dnf install -y python3 ShellCheck
+      # provides `shellcheck`; diffutils provides `cmp`, which 70-config.sh
+      # and 40-repos.sh use to keep staged config and repo files idempotent.
+      # A partial install fails later with a confusing error.
+      - name: Install python3, ShellCheck and diffutils
+        run: dnf install -y python3 ShellCheck diffutils
       # bash -n every shell file the converter ships: the entry point, its
       # libraries, the steps and the tests, plus the shared gate. A missing
       # file is a clear failure, not a silent skip.
