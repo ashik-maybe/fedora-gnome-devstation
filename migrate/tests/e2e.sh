@@ -171,7 +171,7 @@ if [ "$ID" != fedora ] || [ "$VERSION_ID" != @REL@ ] || [ "$VARIANT_ID" != works
   echo "e2e: VM is not Fedora @REL@ Workstation (ID=$ID VERSION_ID=$VERSION_ID VARIANT_ID=$VARIANT_ID)" >&2
   exit 1
 fi
-for f in migrate/migrate.sh files/verify-devstation.sh kickstart/gnome-devstation.ks manifests/assets.sha256; do
+for f in migrate/migrate.sh files/verify-devstation.sh kickstart/gnome-devstation.ks migrate/manifests/assets.sha256; do
   [ -f @REPO@/$f ] || { echo "e2e: converter repo missing $f under @REPO@" >&2; exit 1; }
 done
 echo "e2e: VM is Fedora @REL@ Workstation; converter repo present"

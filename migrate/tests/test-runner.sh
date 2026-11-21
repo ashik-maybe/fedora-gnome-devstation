@@ -210,6 +210,18 @@ assert_contains "$OUT" "OK marker 20-third"
 assert_contains "$OUT" "VERIFY gate"
 assert_contains "$OUT" "GATE ROOT=$ROOTD"
 
+# A gate that rejects the system must fail --verify, not just print its output.
+cat >"$REPO/files/verify-devstation.sh" <<'EOF'
+#!/usr/bin/env bash
+echo "GATE REJECTED THE SYSTEM"
+exit 1
+EOF
+chmod +x "$REPO/files/verify-devstation.sh"
+run_migrate --verify --state-dir "$STATE" --root "$ROOTD"
+assert_eq "$RC" 1
+assert_contains "$OUT" "GATE REJECTED THE SYSTEM"
+printf 'ok - --verify fails when the gate fails\n'
+
 rm -f -- "$STATE/steps/10-second.done"
 run_migrate --verify --state-dir "$STATE" --root "$ROOTD"
 assert_eq "$RC" 1
