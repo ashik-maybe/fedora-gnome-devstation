@@ -117,7 +117,7 @@ set -e
 check "90-verify returns 0 on gate success" [ "$RC" -eq 0 ]
 check "90-verify writes converted marker" [ -f "$case_dir/state/converted" ]
 
-rm -f "$case_dir/state/converted"
+printf 'sentinel\n' >"$case_dir/state/converted"
 set +e
 OUT=$(
 	REPO_DIR="$case_dir/repo2" STATE_DIR="$case_dir/state" ROOT="$case_dir/root"
@@ -135,18 +135,36 @@ echo "== 90-verify fails if converted marker cannot be written"
 case_dir="$work/step90-writefail"
 mkdir -p "$case_dir/state" "$case_dir/root" "$case_dir/repo/files"
 cp "$work/step90/gate-ok" "$case_dir/repo/files/verify-devstation.sh"
-chmod -R a-w "$case_dir/state"
-set +e
-OUT=$(
-	# shellcheck disable=SC2034 # consumed by the sourced step
-	REPO_DIR="$case_dir/repo" STATE_DIR="$case_dir/state" ROOT="$case_dir/root"
-	source "$repo/migrate/steps/90-verify.sh"
-	step_run 2>&1
-)
-RC=$?
-set -e
-chmod -R u+w "$case_dir/state" 2>/dev/null || true
-check "90-verify returns nonzero when marker cannot be written" [ "$RC" -ne 0 ]
+chmod 0755 "$case_dir/repo/files/verify-devstation.sh"
+cat >"$case_dir/run.sh" <<RUN
+#!/usr/bin/env bash
+# shellcheck disable=SC2034 # consumed by the sourced step
+REPO_DIR="$case_dir/repo" STATE_DIR="$case_dir/state" ROOT="$case_dir/root"
+source "$repo/migrate/steps/90-verify.sh"
+step_run 2>&1
+RUN
+chmod 0755 "$case_dir/run.sh"
+if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+	if command -v setpriv >/dev/null 2>&1; then
+		# State dir must be readable but not writable by the dropped-privilege user.
+		chmod 0755 "$work" "$case_dir" "$case_dir/state" "$case_dir/root" "$case_dir/repo" "$case_dir/repo/files"
+		set +e
+		OUT=$(setpriv --reuid=65534 --regid=65534 --clear-groups bash "$case_dir/run.sh" 2>&1)
+		RC=$?
+		set -e
+		check "90-verify returns nonzero when marker cannot be written" [ "$RC" -ne 0 ]
+	else
+		printf '  SKIP 90-verify returns nonzero when marker cannot be written (skipped: root without setpriv)\n'
+	fi
+else
+	chmod -R a-w "$case_dir/state"
+	set +e
+	OUT=$(bash "$case_dir/run.sh" 2>&1)
+	RC=$?
+	set -e
+	chmod -R u+w "$case_dir/state" 2>/dev/null || true
+	check "90-verify returns nonzero when marker cannot be written" [ "$RC" -ne 0 ]
+fi
 
 echo "== 90-verify honors DRY_RUN"
 case_dir="$work/step90-dry"
