@@ -118,7 +118,20 @@ printf '%s\n' "$dry_line" | grep -q -- ' upgrade$' || fail "DRY_RUN did not targ
 ok "DRY_RUN uses --assumeno, never -y, and writes nothing"
 
 # ---------------------------------------------------------------------------
-# 6. step_plan prints a description without calling dnf or writing files.
+# 6. DRY_RUN must still refuse when ROOT is not / (not a staging step).
+# ---------------------------------------------------------------------------
+state="$tmp/state/dry-root"
+mkdir -p "$state"
+: >"$tmp/dry-root.log"
+export DNF_LOG="$tmp/dry-root.log" DNF_UPGRADE_FAIL=0 DNF_CHECK_FAIL=0
+export STATE_DIR="$state" DRY_RUN=1 ROOT="$tmp/fake-root"
+if step_run; then fail "DRY_RUN with ROOT!=/ should refuse"; fi
+[ ! -s "$tmp/dry-root.log" ] || fail "DRY_RUN with ROOT!=/ must not call dnf"
+find "$state" -type f -print -quit | grep -q . && fail "DRY_RUN with ROOT!=/ wrote files under STATE_DIR"
+ok "DRY_RUN refuses when ROOT is not /"
+
+# ---------------------------------------------------------------------------
+# 7. step_plan prints a description without calling dnf or writing files.
 # ---------------------------------------------------------------------------
 : >"$tmp/plan.log"
 export DNF_LOG="$tmp/plan.log"

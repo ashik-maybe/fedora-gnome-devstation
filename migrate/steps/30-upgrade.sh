@@ -19,10 +19,17 @@ step_run() (
 	}
 
 	local state_dir="${STATE_DIR:-/var/lib/gnome-devstation-migrate}"
+	local root="${ROOT:-/}"
 	local -a dnf_opts=(
 		"--setopt=cachedir=${state_dir}/dnf-cache"
 		"--setopt=keepcache=1"
 	)
+
+	# This step mutates the live system; it is not a staging step (00/10/20).
+	if [ "$root" != "/" ]; then
+		_upgrade_log "refusing to upgrade: ROOT='${root}' is not '/'"
+		return 1
+	fi
 
 	# ---- Plan / dry run: resolve the transaction, never apply, never write. ----
 	if [ "${DRY_RUN:-0}" = "1" ]; then
@@ -31,12 +38,6 @@ step_run() (
 		if dnf "${dnf_opts[@]}" --assumeno upgrade; then
 			return 0
 		fi
-		return 1
-	fi
-
-	# This step mutates the live system; it is not a staging step (00/10/20).
-	if [ -n "${ROOT:-}" ] && [ "${ROOT}" != "/" ]; then
-		_upgrade_log "refusing to upgrade: ROOT='${ROOT}' is not '/'"
 		return 1
 	fi
 
