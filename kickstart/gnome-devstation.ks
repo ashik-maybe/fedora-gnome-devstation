@@ -152,10 +152,11 @@ kernel
 
 # --- Firmware and hardware enablement -------------------------------
 #
-# Catch-all, not Intel-only. This image is built to boot on whatever it lands
-# on, so every vendor's firmware ships. The EliteBook 840 G3 that started this
-# project uses the Intel row of this table; a different machine uses a
-# different row and nothing else changes.
+# Catch-all, not Intel-only. This image ships firmware for common laptop and
+# desktop hardware across vendors, so it can boot on many machines. The
+# EliteBook 840 G3 that started this project uses the Intel row of this
+# table; a different machine may use a different row and need extra
+# firmware installed.
 #
 # linux-firmware itself stays regardless: it carries the wireless regulatory
 # database the kernel reads at boot, and it is a dependency of the vendor

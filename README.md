@@ -2,9 +2,8 @@
 
 A Fedora 45 GNOME desktop image for developers, built from the Fedora Everything
 netinst with `mkksiso` and a kickstart. It ships the full GNOME session, the
-media stack Fedora leaves out, a developer toolchain, and — as of this version —
-every firmware package and driver Fedora offers, so it boots on whatever machine
-it lands on.
+media stack Fedora leaves out, a developer toolchain, and firmware for common
+laptop and desktop hardware, so it boots on a wide range of machines.
 
 No themes. No dotfiles. No kernel arguments. No custom `sysctl` files. If
 upstream GNOME or Fedora changes a default, this image inherits the change
@@ -32,7 +31,7 @@ instead of fighting it.
 
 It is the **Fedora Workstation environment group**, minus the applications
 nobody uses on a development machine, plus a toolchain, RPM Fusion's codec
-packages, and every firmware package.
+packages, and firmware for common laptop and desktop hardware.
 
 It is **not** a minimal install and not a tuned image:
 
@@ -151,8 +150,8 @@ want to try the other one.
 
 ### Firmware and drivers
 
-This is the catch-all part. Every firmware package Fedora ships is installed,
-so the image does not assume which hardware it lands on:
+This is the catch-all part. It installs firmware for common laptop and desktop
+hardware, so the image does not assume which machine it lands on:
 
 ```
 alsa-sof-firmware      intel-audio-firmware   cirrus-audio-firmware
