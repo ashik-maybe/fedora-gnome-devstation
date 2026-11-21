@@ -62,12 +62,22 @@ step_run() (
 	fi
 
 	# Regenerate the add/remove lists from the kickstart (single source of
-	# truth). MANIFEST_DIR is a caller override and defaults under STATE_DIR,
-	# so this write is allowed even in DRY_RUN.
+	# truth). MANIFEST_DIR is a caller override and defaults under STATE_DIR.
+	# DRY_RUN must not write outside STATE_DIR, so redirect an out-of-tree
+	# override to a throwaway directory inside STATE_DIR.
 	[ -n "$repo_dir" ] || {
 		_step50_log "REPO_DIR is not set; cannot locate manifest.py"
 		return 1
 	}
+	if [ "$dry_run" = 1 ]; then
+		case "$manifest_dir" in
+		"$state_dir" | "$state_dir"/*) ;;
+		*)
+			manifest_dir="$state_dir/dry-run-manifest"
+			_step50_log "DRY_RUN: redirecting manifest generation inside STATE_DIR: $manifest_dir"
+			;;
+		esac
+	fi
 	mkdir -p "$manifest_dir" || {
 		_step50_log "cannot create manifest directory: $manifest_dir"
 		return 1

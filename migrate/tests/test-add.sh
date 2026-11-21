@@ -153,6 +153,30 @@ grep -q -- '--assumeno' "$STUB_DNF_LOG" && ! grep -q -- ' -y ' "$STUB_DNF_LOG"
 rc=$?
 check "$rc" "DRY_RUN never applies (-y)"
 
+# --- DRY_RUN must not write outside STATE_DIR -------------------------------
+: >"$STUB_DNF_LOG"
+: >"$STUB_PY_LOG"
+outside_manifest="$tmp/outside-manifest"
+rm -rf "$outside_manifest"
+MANIFEST_DIR="$outside_manifest"
+# shellcheck disable=SC2034 # read by the sourced step under test
+DRY_RUN=1
+if step_run; then rc=0; else rc=$?; fi
+unset DRY_RUN
+MANIFEST_DIR="$tmp/manifest"
+check "$rc" "DRY_RUN succeeds when MANIFEST_DIR is outside STATE_DIR"
+if [ -e "$outside_manifest" ]; then
+	rc=1
+else
+	rc=0
+fi
+check "$rc" "DRY_RUN writes no manifest outside STATE_DIR"
+# restore manifest dir contents for any later tests
+mkdir -p "$tmp/manifest"
+printf 'kernel\ngit\n' >"$tmp/manifest/add.txt"
+printf 'gnome-software\ngnome-tour\n' >"$tmp/manifest/remove.txt"
+: >"$tmp/manifest/drop-groups.txt"
+
 # --- repo arg with spaces must not be word-split ----------------------------
 : >"$STUB_DNF_LOG"
 cat >"$tmp/bin/dnf" <<'STUB'
