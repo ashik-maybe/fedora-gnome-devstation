@@ -156,6 +156,68 @@ expect_ok "replaced sibling dest matches source" cmp -s "$src" "$sibdir/stage.is
 expect_ok "unrelated sibling still present" test -f "$sibling"
 expect_ok "unrelated sibling untouched" test "$(cat "$sibling")" = "do not touch"
 
+# 4d. A symlink .part must never be written through: remove it, stage a real
+# file, and leave the symlink target's original content untouched.
+sym_victim="$work/sym-victim.txt"
+printf 'KEEP ME\n' >"$sym_victim"
+sym_dest="$work/assets/sym-part.bin"
+mkdir -p "$(dirname "$sym_dest")"
+ln -s "$sym_victim" "$sym_dest.part"
+reset_curl_log
+expect_ok "symlink .part is replaced, not written through" \
+	download_stage "file://$src" "$sym_dest" "$src_sha"
+expect_ok "symlink .part staging produced correct content" cmp -s "$src" "$sym_dest"
+expect_ok "symlink .part victim untouched" test "$(cat "$sym_victim")" = "KEEP ME"
+if [ -L "$sym_dest" ]; then
+	fail "symlink .part left dest as a symlink"
+else
+	pass "symlink .part left dest as a regular file"
+fi
+
+# 4e. A symlink dest must be replaced with a real verified file, not trusted
+# or written through.
+sym_dest_victim="$work/sym-dest-victim.txt"
+printf 'ORIGINAL\n' >"$sym_dest_victim"
+sym_dest2="$work/assets/sym-dest.bin"
+mkdir -p "$(dirname "$sym_dest2")"
+ln -s "$sym_dest_victim" "$sym_dest2"
+expect_ok "symlink dest is replaced by a real file" \
+	download_stage "file://$src" "$sym_dest2" "$src_sha"
+expect_ok "symlink dest replacement has correct content" cmp -s "$src" "$sym_dest2"
+expect_ok "symlink dest victim untouched" test "$(cat "$sym_dest_victim")" = "ORIGINAL"
+if [ -L "$sym_dest2" ]; then
+	fail "symlink dest left in place"
+else
+	pass "symlink dest replaced with a regular file"
+fi
+
+# 4f. A symlink dest with correct content must not be trusted as staged; it
+# must be replaced by a real regular file.
+sym_good_victim="$work/sym-good-victim.bin"
+cp "$src" "$sym_good_victim"
+sym_dest3="$work/assets/sym-good.bin"
+mkdir -p "$(dirname "$sym_dest3")"
+ln -s "$sym_good_victim" "$sym_dest3"
+expect_ok "symlink dest with correct hash is restaged" \
+	download_stage "file://$src" "$sym_dest3" "$src_sha"
+expect_ok "restaged symlink dest has correct content" cmp -s "$src" "$sym_dest3"
+if [ -L "$sym_dest3" ]; then
+	fail "symlink dest with correct hash left in place"
+else
+	pass "symlink dest with correct hash replaced with regular file"
+fi
+
+# 4g. mkdir failure is reported clearly and does not stage anything.
+blocker="$work/mkdir-blocker"
+printf 'not a dir\n' >"$blocker"
+expect_fail "mkdir failure is reported" \
+	download_stage "file://$src" "$blocker/sub/file.bin" "$src_sha"
+if [ -e "$blocker/sub/file.bin" ] || [ -e "$blocker/sub/file.bin.part" ]; then
+	fail "mkdir failure left files behind"
+else
+	pass "mkdir failure left no files behind"
+fi
+
 # 5. Sourcing the library must not mutate a caller that turned strict mode off.
 # The download itself also runs with strict mode off and no pre-made directory.
 expect_ok "sourcing lib leaves caller shell options untouched (set +e)" bash -c '

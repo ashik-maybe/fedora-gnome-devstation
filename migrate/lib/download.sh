@@ -8,11 +8,12 @@
 if [ "${_LIB_DOWNLOAD_LOADED:-0}" != 1 ]; then
 	_LIB_DOWNLOAD_LOADED=1
 
-	# _file_matches <file> <sha256>: 0 when <file> exists and its digest equals
-	# <sha256>. Missing or unreadable files never match: a staged file is only
-	# usable when the sum was actually checked.
+	# _file_matches <file> <sha256>: 0 when <file> is a regular file (not a
+	# symlink) and its digest equals <sha256>. Missing, unreadable or symlinked
+	# files never match: a staged file is only usable when the sum was actually
+	# checked on a real file in place.
 	_file_matches() {
-		[ -f "$1" ] || return 1
+		[ -f "$1" ] && [ ! -L "$1" ] || return 1
 		[ "$(sha256sum "$1" | awk '{print $1}')" = "$2" ]
 	}
 
@@ -60,14 +61,26 @@ if [ "${_LIB_DOWNLOAD_LOADED:-0}" != 1 ]; then
 			return 0
 		fi
 
+		# Never write through a symlink: remove a symlinked dest or part so a
+		# planted link cannot redirect the download to another file.
+		if [ -L "$dest" ]; then
+			rm -f -- "$dest"
+		fi
+		if [ -L "$part" ]; then
+			rm -f -- "$part"
+		fi
+
 		# A corrupt final file must be replaced, not reused. Only the stale
 		# file is removed; a partial part next to it is kept for the resume.
 		if [ -e "$dest" ] && [ ! -e "$part" ]; then
-			rm -f "$dest"
+			rm -f -- "$dest"
 		fi
 
 		# The caller may not have created the destination directory.
-		mkdir -p -- "$(dirname -- "$dest")"
+		mkdir -p -- "$(dirname -- "$dest")" || {
+			echo "download: cannot create directory for $dest" >&2
+			return 1
+		}
 
 		# Attempt 1: resume whatever is already in the .part (or start fresh).
 		if ! curl -fL -C - --retry 3 -o "$part" "$url"; then
