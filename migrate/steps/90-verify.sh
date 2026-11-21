@@ -11,6 +11,11 @@ step_run() (
 	: "${REPO_DIR:?REPO_DIR must be set}"
 	: "${STATE_DIR:?STATE_DIR must be set}"
 
+	if [ "${DRY_RUN:-0}" = 1 ]; then
+		step_plan
+		return 0
+	fi
+
 	rm -f -- "$STATE_DIR/converted"
 	"$REPO_DIR/files/verify-devstation.sh"
 
