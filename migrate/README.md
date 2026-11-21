@@ -18,12 +18,13 @@ sudo dnf install -y git
 git clone <this-repo> && cd gnome-devstation
 sudo migrate/migrate.sh --plan          # print the work, change nothing
 sudo migrate/migrate.sh                 # apply; re-run to resume
-sudo migrate/migrate.sh --verify        # run only the final gate
+sudo migrate/migrate.sh --verify        # check markers, then run the shared gate
 ```
 
 `--plan` is a dry run: it walks the steps but writes nothing outside the state
-directory. `--verify` calls the shared gate in `files/verify-devstation.sh`
-without changing anything. The full command line is listed under
+directory. `--verify` first requires a done marker for every step, then calls
+the shared gate in `files/verify-devstation.sh`; it changes nothing. The full
+command line is listed under
 [Options](#options).
 
 ## Prerequisites and supported input
@@ -125,7 +126,7 @@ migrate/migrate.sh [--plan] [--verify] [--step NN-name] [--force]
 | --- | --- |
 | *(none)* | Resume: run unfinished steps in order, stop at the first failure, keep every marker. |
 | `--plan` | Print the work and change nothing outside the state dir (`DRY_RUN=1`). |
-| `--verify` | Run only the shared final gate; no changes. |
+| `--verify` | Require every step marker, then run the shared gate; no changes. |
 | `--step NN-name` | Select one step by ID, e.g. `--step 70-config`. |
 | `--force` | Re-run a selected step even when its done marker exists (`FORCE=1`); use with `--step`. |
 | `--state-dir DIR` | Use a different state directory instead of `/var/lib/gnome-devstation-migrate`. |
