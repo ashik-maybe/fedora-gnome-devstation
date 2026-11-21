@@ -136,6 +136,7 @@ lock_path=/run/gnome-devstation-migrate.lock
 holder_ready="$state_dir/holder.ready"
 holder_stop="$state_dir/holder.stop"
 leak_result="$state_dir/leak.result"
+leak_err="$state_dir/leak.err"
 (
 	trap - EXIT
 	exec 9>>"$lock_path" || exit 1
@@ -165,7 +166,7 @@ done
 	else
 		echo "CLEAN" >"$leak_result"
 	fi
-)
+) 2>"$leak_err"
 : >"$holder_stop"
 wait "$holder_pid"
 
@@ -175,5 +176,9 @@ LEAK) fail "state_lock_acquire leaked fd 9 after a failed flock" ;;
 ACQUIRED) fail "state_lock_acquire succeeded while another process held the lock" ;;
 *) fail "unexpected competing-acquire result: $(cat "$leak_result")" ;;
 esac
+
+grep -qi 'lock' "$leak_err" ||
+	fail "state_lock_acquire should report lock contention on stderr"
+ok "state_lock_acquire reports lock contention"
 
 echo "all state.sh tests passed"

@@ -84,6 +84,7 @@ state_lock_acquire() {
 		opened_fd=1
 	fi
 	if ! flock -n 9; then
+		printf 'state: could not acquire lock: %s\n' "$lock" >&2
 		# If this call opened fd 9, do not leave it behind on failure. If the
 		# caller already held fd 9, leave it alone (reentrancy).
 		if [ "$opened_fd" = 1 ]; then
