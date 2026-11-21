@@ -118,6 +118,10 @@ expand() {
 	local t="$1"
 	t="${t//@REPO@/$REPO_Q}"
 	t="${t//@STATE@/$STATE_Q}"
+	# @CONV_ARG@ is the conv command as a single shell-quoted argument, for
+	# use as `bash -c @CONV_ARG@`. Replace it before @CONV@, which is the raw
+	# command prefix for `@CONV@ && ...` / `@CONV@ --verify`.
+	t="${t//@CONV_ARG@/$(rq "$(conv)")}"
 	t="${t//@CONV@/$(conv)}"
 	t="${t//@REL@/$FEDORA_RELEASE}"
 	printf '%s' "$t"
@@ -212,8 +216,14 @@ EOF
 sc_interrupt_start() {
 	ssh_tmpl <<'EOF' || return 1
 # e2e:interrupt-start
+# Scenario 3 leaves every step marked done. Clear the 10-assets marker and
+# staged assets so this run actually downloads and the .part watch below can
+# catch it mid-transfer on a real VM.
 rm -f @STATE@/interrupted @STATE@/e2e-interrupt.log @STATE@/e2e-interrupt.pid
-nohup bash -c "@CONV@" </dev/null >@STATE@/e2e-interrupt.log 2>&1 &
+rm -f @STATE@/steps/10-assets.done
+rm -rf @STATE@/assets
+mkdir -p @STATE@/assets
+nohup bash -c @CONV_ARG@ </dev/null >@STATE@/e2e-interrupt.log 2>&1 &
 echo $! > @STATE@/e2e-interrupt.pid
 sleep 1
 kill -0 "$(cat @STATE@/e2e-interrupt.pid)" 2>/dev/null || { echo "e2e: staged converter did not start" >&2; exit 1; }
@@ -418,6 +428,12 @@ EOF
 				st=1
 				;;
 			esac
+			case "$cur" in
+			*'bash -c "'*'migrate/migrate.sh'*)
+				echo "self-test: conv must not be embedded in a double-quoted bash -c argument: $cur" >&2
+				st=1
+				;;
+			esac
 			if ! printf '%s\n' "$cur" | bash -n; then
 				echo "self-test: generated command has a syntax error: $cur" >&2
 				st=1
@@ -430,6 +446,32 @@ EOF
 	done <"$cmds"
 	[ "$cmd_n" -eq 9 ] || {
 		echo "self-test: expected 9 generated commands, got $cmd_n" >&2
+		st=1
+	}
+
+	# Regression: a conv command embedded as bash -c "@CONV@" breaks when the
+	# repo/state path contains shell metacharacters, because rq()'s single-quote
+	# escaping is parsed inside the outer double quotes. The interrupt scenario
+	# must use @CONV_ARG@ (a single-quoted bash -c argument) instead.
+	local special_cmd
+	special_cmd="$(
+		E2E_REPO_DIR='/tmp/e2e$repo'
+		E2E_STATE_DIR='/tmp/e2e$state'
+		E2E_SUDO='sudo'
+		FEDORA_RELEASE='45'
+		paths
+		expand 'nohup bash -c @CONV_ARG@ </dev/null >@STATE@/log 2>&1 &'
+	)"
+	if ! printf '%s' "$special_cmd" | grep -Fq "bash -c '"; then
+		echo "self-test: @CONV_ARG@ should produce a single-quoted bash -c argument: $special_cmd" >&2
+		st=1
+	fi
+	if ! printf '%s' "$special_cmd" | grep -Fq "'/tmp/e2e\$repo'"; then
+		echo "self-test: special-path repo dir was not preserved as a quoted literal: $special_cmd" >&2
+		st=1
+	fi
+	printf '%s\n' "$special_cmd" | bash -n || {
+		echo "self-test: special-path command has a syntax error: $special_cmd" >&2
 		st=1
 	}
 
