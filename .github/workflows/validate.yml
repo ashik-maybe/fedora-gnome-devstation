@@ -78,18 +78,26 @@ jobs:
             [ -e "$f" ] || { echo "MISSING: $f" >&2; exit 1; }
             shellcheck -s bash -S warning -e SC1090,SC1091 "$f"
           done
-      # The converter is self-contained: run its unit tests.
+      # The converter is self-contained: run EVERY unit test, not a hand-maintained
+      # subset (a new step's test must fail CI if it breaks).
       - name: Run converter self-tests
         run: |
           set -euo pipefail
-          for t in migrate/tests/test-state.sh migrate/tests/test-download.sh \
-                   migrate/tests/test-rpms.sh migrate/tests/test-manifest.sh \
-                   migrate/tests/test-preflight.sh migrate/tests/test-config.sh \
-                   migrate/tests/test-flatpak.sh; do
+          count=0
+          for t in migrate/tests/test-*.sh; do
             [ -f "$t" ] || { echo "MISSING: $t" >&2; exit 1; }
             echo "== $t =="
             bash "$t"
+            count=$((count + 1))
           done
+          [ "$count" -ge 14 ] || { echo "only $count converter tests found" >&2; exit 1; }
+      # The VM harness must stay opt-in, but its stubbed self-test and skip
+      # path are cheap and prove the driver is wired up.
+      - name: Check the opt-in VM harness
+        run: |
+          set -euo pipefail
+          bash migrate/tests/e2e.sh --self-test
+          bash migrate/tests/e2e.sh
       # build.sh check runs ksvalidator and then `bash -n` on every
       # %pre/%post block, which is the part ksvalidator cannot see.
       - name: Validate kickstart
