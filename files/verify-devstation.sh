@@ -64,14 +64,22 @@ for uuid in caffeine@patapon.info appindicatorsupport@rgcjonas.gmail.com; do
 	esac
 done
 
-shell_major="$(gnome-shell --version | awk '{print $3}' | cut -d. -f1)"
-for uuid in caffeine@patapon.info appindicatorsupport@rgcjonas.gmail.com; do
-	meta="$root/usr/share/gnome-shell/extensions/$uuid/metadata.json"
-	if [ ! -f "$meta" ] || ! grep -q "\"$shell_major\"" "$meta"; then
-		echo "EXTENSION DOES NOT DECLARE SHELL $shell_major: $uuid" >&2
-		fail=1
-	fi
-done
+shell_major=""
+if command -v gnome-shell >/dev/null 2>&1; then
+	shell_major="$(gnome-shell --version 2>/dev/null | awk '{print $3}' | cut -d. -f1)" || true
+fi
+if [ -z "$shell_major" ]; then
+	echo "GNOME-SHELL VERSION UNAVAILABLE: cannot verify extension metadata" >&2
+	fail=1
+else
+	for uuid in caffeine@patapon.info appindicatorsupport@rgcjonas.gmail.com; do
+		meta="$root/usr/share/gnome-shell/extensions/$uuid/metadata.json"
+		if [ ! -f "$meta" ] || ! grep -q "\"$shell_major\"" "$meta"; then
+			echo "EXTENSION DOES NOT DECLARE SHELL $shell_major: $uuid" >&2
+			fail=1
+		fi
+	done
+fi
 
 # Exactly one Power Profiles provider: tuned-ppd in the Workstation environment,
 # never tuned-ppd and power-profiles-daemon at the same time.
