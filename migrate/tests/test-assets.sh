@@ -124,7 +124,18 @@ run_step || fail 'step_run failed after a staged asset was corrupted'
 check_staged
 pass 'corrupt asset is refetched alone and still verifies'
 
-# 4. The committed manifest is sha256sum-format with the four F45 basenames.
+# 4. A symlinked staged asset is rejected and refetched into a real file.
+: >"$STAGE_LOG" || exit 1
+rm -f -- "$ASSETS_DIR/google-chrome.asc" || exit 1
+ln -s -- "$FIXTURE/src/google-chrome.asc" "$ASSETS_DIR/google-chrome.asc" || exit 1
+run_step || fail 'step_run failed when a staged asset was a symlink'
+[ "$(wc -l <"$STAGE_LOG")" -eq 1 ] || fail "expected exactly 1 refetch for symlinked asset, got $(wc -l <"$STAGE_LOG")"
+[ "$(cat "$STAGE_LOG")" = 'google-chrome.asc' ] || fail "refetched the wrong asset for symlink: $(cat "$STAGE_LOG")"
+[ -f "$ASSETS_DIR/google-chrome.asc" ] && [ ! -L "$ASSETS_DIR/google-chrome.asc" ] || fail 'symlinked staged asset was not replaced by a regular file'
+check_staged
+pass 'symlinked staged asset is rejected and refetched into a real file'
+
+# 5. The committed manifest is sha256sum-format with the four F45 basenames.
 [ -f "$REAL_MANIFEST" ] || fail "missing committed manifest $REAL_MANIFEST"
 count=0
 while read -r hash name extra || [ -n "${hash:-}${name:-}" ]; do

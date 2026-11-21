@@ -180,7 +180,10 @@ step_run() (
 		}
 		dest="$ASSETS_DIR/$name"
 
-		if [ -f "$dest" ]; then
+		if [ -L "$dest" ]; then
+			state_log "assets: $name is a symlink; removing and refetching as a real file"
+			rm -f -- "$dest" || return 1
+		elif [ -f "$dest" ]; then
 			have=$(_assets_hash_of "$dest") || {
 				state_log "assets: cannot hash $dest"
 				return 1
@@ -206,7 +209,7 @@ step_run() (
 		name=${_ASSETS_NAMES[$i]}
 		hash=${_ASSETS_HASHES[$i]}
 		dest="$ASSETS_DIR/$name"
-		[ -f "$dest" ] || {
+		[ -f "$dest" ] && [ ! -L "$dest" ] || {
 			state_log "assets: missing $dest"
 			return 1
 		}
