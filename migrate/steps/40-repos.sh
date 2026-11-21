@@ -62,10 +62,17 @@ step_run() (
 	local state_dir="${STATE_DIR:-/var/lib/gnome-devstation-migrate}"
 	local dry_run="${DRY_RUN:-0}"
 	local key_dir="$state_dir/imported-keys"
-	local repos_target="$root/etc/yum.repos.d"
+	local repos_target="${REPOS_TARGET:-$root/etc/yum.repos.d}"
 
 	local pair rpm_file rpm_pkg repo src dst key key_marker
 	local failed=0
+
+	# This step installs release RPMs and imports keys into the live rpmdb;
+	# it is not a staging step and must refuse a non-root target.
+	if [ "$root" != "/" ]; then
+		state_log "refusing to run: ROOT='${root}' is not '/'"
+		return 1
+	fi
 
 	# 1. Persist RPM Fusion for the installed system -------------------------
 	for pair in "${__repos_release_rpms[@]}"; do

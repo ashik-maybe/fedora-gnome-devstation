@@ -79,11 +79,14 @@ trap cleanup EXIT
 setup_workspace() {
 	local base="$1" a
 	STATE_DIR="$base/state"
-	ROOT="$base/root"
+	FAKE_ROOT="$base/root"
+	ROOT="/"
+	REPOS_TARGET="$FAKE_ROOT/etc/yum.repos.d"
 	ASSETS_DIR="$base/assets"
 	REPO_DIR="$base/repo"
 	DRY_RUN=0
-	mkdir -p "$STATE_DIR" "$ROOT" "$ASSETS_DIR" "$REPO_DIR/repos"
+	FORCE=0
+	mkdir -p "$STATE_DIR" "$REPOS_TARGET" "$ASSETS_DIR" "$REPO_DIR/repos"
 	: >"$STATE_DIR/rpm-installed"
 	: >"$STATE_DIR/rpm-calls.log"
 	: >"$STATE_DIR/install.log"
@@ -95,7 +98,7 @@ setup_workspace() {
 	done
 	printf '[google-chrome]\nenabled=1\n' >"$REPO_DIR/repos/google-chrome.repo"
 	printf '[copr:helium]\nenabled=1\n' >"$REPO_DIR/repos/helium-copr.repo"
-	export STATE_DIR ROOT ASSETS_DIR REPO_DIR DRY_RUN
+	export STATE_DIR ROOT FAKE_ROOT REPOS_TARGET ASSETS_DIR REPO_DIR DRY_RUN FORCE
 }
 
 # --- first run does the work ------------------------------------------------
@@ -112,8 +115,8 @@ grep -q -- "--import $ASSETS_DIR/google-chrome.asc" "$rpm_log" ||
 grep -q -- "--import $ASSETS_DIR/helium-copr.asc" "$rpm_log" ||
 	fail "first run did not import the helium COPR key"
 for repo in google-chrome.repo helium-copr.repo; do
-	cmp -s "$REPO_DIR/repos/$repo" "$ROOT/etc/yum.repos.d/$repo" ||
-		fail "first run did not copy $repo into ROOT"
+	cmp -s "$REPO_DIR/repos/$repo" "$REPOS_TARGET/$repo" ||
+		fail "first run did not copy $repo into REPOS_TARGET"
 done
 for key in google-chrome.asc helium-copr.asc; do
 	[ -f "$STATE_DIR/imported-keys/$key.imported" ] ||
@@ -138,6 +141,22 @@ step_run || fail "second step_run returned nonzero"
 	fail "second run rewrote an identical repo file"
 ok "second run performs no Uvh, no import and no repo-file rewrite"
 
+# --- ROOT != / is refused ---------------------------------------------------
+setup_workspace "$work/root-guard"
+ROOT="$FAKE_ROOT"
+: >"$STATE_DIR/rpm-calls.log"
+: >"$STATE_DIR/install.log"
+if step_run; then
+	fail "step_run returned 0 when ROOT != /"
+fi
+[ "$(wc -l <"$STATE_DIR/rpm-calls.log")" -eq 0 ] ||
+	fail "ROOT != / guard must not call rpm"
+[ -z "$(find "$REPOS_TARGET" -type f -print -quit)" ] ||
+	fail "ROOT != / guard must not write repo files"
+[ ! -e "$STATE_DIR/imported-keys" ] ||
+	fail "ROOT != / guard must not create key import markers"
+ok "ROOT != / is refused with no rpm calls and no repo files written"
+
 # --- DRY_RUN writes nothing -------------------------------------------------
 setup_workspace "$work/dry"
 DRY_RUN=1
@@ -146,7 +165,8 @@ step_run || fail "DRY_RUN step_run returned nonzero"
 	fail "DRY_RUN called rpm -Uvh"
 [ "$(grep -c -- '--import' "$STATE_DIR/rpm-calls.log" || true)" -eq 0 ] ||
 	fail "DRY_RUN called rpm --import"
-[ ! -e "$ROOT/etc" ] || fail "DRY_RUN created files under ROOT"
+[ -z "$(find "$REPOS_TARGET" -type f -print -quit)" ] ||
+	fail "DRY_RUN created files under REPOS_TARGET"
 [ ! -e "$STATE_DIR/imported-keys" ] || fail "DRY_RUN created key import markers"
 [ ! -s "$STATE_DIR/install.log" ] || fail "DRY_RUN copied a repo file"
 ok "DRY_RUN only prints: no rpm writes, no ROOT files and no markers"
@@ -159,7 +179,7 @@ setup_workspace "$work/fallback"
 ) || fail "step_run failed when state_log is absent (fallback path)"
 grep -q -- '-Uvh' "$STATE_DIR/rpm-calls.log" ||
 	fail "fallback path did not install the release RPMs"
-[ -f "$ROOT/etc/yum.repos.d/google-chrome.repo" ] ||
+[ -f "$REPOS_TARGET/google-chrome.repo" ] ||
 	fail "fallback path did not copy the repo files"
 ok "step_run works with the declare -F state_log fallback"
 
