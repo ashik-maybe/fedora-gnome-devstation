@@ -2,10 +2,10 @@
 # Resolve the kickstart against live repositories and download every RPM it
 # needs into $DEST, indexed as a dnf repository.
 #
-# build.sh runs this inside a Fedora container of the target release, so the
-# closure matches that release rather than whatever the build host runs. It can
-# also be run directly on a machine that is already on the target release:
-# nothing here touches the host's rpmdb (--installroot is an empty directory).
+# The default path runs inside a Fedora container of the target release, so the
+# host rpmdb and /etc/yum.repos.d stay untouched.
+# BUILD_IMAGE=none runs on this machine: it installs the RPM Fusion release
+# packages and copies repo files into /etc/yum.repos.d here.
 #
 # Environment:
 #   FEDORA_RELEASE  release to resolve against (default 45)
