@@ -43,6 +43,12 @@ step_run() (
 	local state_dir="${STATE_DIR:-/var/lib/gnome-devstation-migrate}"
 	local manifest_dir="${MANIFEST_DIR:-$state_dir/manifest}"
 	local dry_run="${DRY_RUN:-0}"
+	local root="${ROOT:-/}"
+
+	if [ "$root" != "/" ]; then
+		_step50_log "refusing to run against non-root target: ROOT=$root"
+		return 1
+	fi
 
 	# lib/rpms.sh provides rpms_dnf_arg (the --repofrompath=... of the staged
 	# local repo). Guard against double sourcing like every other step.

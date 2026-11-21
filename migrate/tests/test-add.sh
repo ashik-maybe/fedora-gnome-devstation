@@ -177,6 +177,22 @@ printf 'kernel\ngit\n' >"$tmp/manifest/add.txt"
 printf 'gnome-software\ngnome-tour\n' >"$tmp/manifest/remove.txt"
 : >"$tmp/manifest/drop-groups.txt"
 
+# --- ROOT != / must be refused before touching dnf --------------------------
+: >"$STUB_DNF_LOG"
+: >"$STUB_PY_LOG"
+ROOT="$tmp/fakeroot"
+mkdir -p "$ROOT"
+if step_run; then rc=0; else rc=$?; fi
+unset ROOT
+[ "$rc" -ne 0 ]
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "step_run refuses when ROOT is not /"
+[ ! -s "$STUB_DNF_LOG" ]
+# shellcheck disable=SC2319 # status of the preceding assertion
+rc=$?
+check "$rc" "ROOT refusal happens before any dnf call"
+
 # --- repo arg with spaces must not be word-split ----------------------------
 : >"$STUB_DNF_LOG"
 cat >"$tmp/bin/dnf" <<'STUB'
