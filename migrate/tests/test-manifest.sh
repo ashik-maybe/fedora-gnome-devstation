@@ -60,6 +60,66 @@ if python3 "$MANIFEST" "$work/bad.ks" "$work/out-bad"; then
 	fail "expected manifest.py to fail on the @core group"
 fi
 
+# --- 2b. Malformed empty names fail loudly ---------------------------------
+cat >"$work/empty-neg.ks" <<'EOF'
+%packages
+-
+%end
+EOF
+if python3 "$MANIFEST" "$work/empty-neg.ks" "$work/out-empty-neg"; then
+	fail "expected manifest.py to fail on empty negation '-'"
+fi
+
+cat >"$work/empty-drop.ks" <<'EOF'
+%packages
+-@
+%end
+EOF
+if python3 "$MANIFEST" "$work/empty-drop.ks" "$work/out-empty-drop"; then
+	fail "expected manifest.py to fail on empty drop-group '-@'"
+fi
+
+# --- 2c. Edge cases: header options, KEEP, comments, CRLF, dedup -----------
+cat >"$work/edge.ks" <<'EOF'
+%packages --nocore --excludeWeakdeps
+# comment should be ignored
+kernel
+kernel
+-gnome-tour
+-gnome-tour
+-colord
+-cups-pk-helper
+-libglvnd-gles
+-@firefox
+-@firefox
+@^workstation-product-environment
+%end
+EOF
+python3 "$MANIFEST" "$work/edge.ks" "$work/out-edge"
+printf 'kernel\n' >"$work/exp-edge-add"
+printf 'gnome-tour\n' >"$work/exp-edge-remove"
+printf 'firefox\n' >"$work/exp-edge-drop"
+diff -u "$work/exp-edge-add" "$work/out-edge/add.txt" || fail "edge add.txt mismatch"
+diff -u "$work/exp-edge-remove" "$work/out-edge/remove.txt" || fail "edge remove.txt mismatch"
+diff -u "$work/exp-edge-drop" "$work/out-edge/drop-groups.txt" || fail "edge drop-groups.txt mismatch"
+for kept in colord cups-pk-helper libglvnd-gles; do
+	if grep -qxF "$kept" "$work/out-edge/remove.txt"; then
+		fail "$kept must not be in remove.txt"
+	fi
+done
+
+# CRLF line endings must be accepted.
+python3 - "$work/crlf.ks" <<'PY'
+import sys
+path = sys.argv[1]
+text = '%packages\r\nkernel\r\n-gnome-tour\r\n-@firefox\r\n%end\r\n'
+open(path, 'w', newline='').write(text)
+PY
+python3 "$MANIFEST" "$work/crlf.ks" "$work/out-crlf"
+diff -u "$work/exp-edge-add" "$work/out-crlf/add.txt" || fail "CRLF add.txt mismatch"
+diff -u "$work/exp-edge-remove" "$work/out-crlf/remove.txt" || fail "CRLF remove.txt mismatch"
+diff -u "$work/exp-edge-drop" "$work/out-crlf/drop-groups.txt" || fail "CRLF drop-groups.txt mismatch"
+
 # --- 3. Real kickstart ------------------------------------------------------
 real_out="$work/out-real"
 python3 "$MANIFEST" "$REAL_KS" "$real_out"

@@ -54,10 +54,18 @@ def main():
                     f"(only @^{IGNORED_ENVIRONMENT} is ignored)"
                 )
         elif line.startswith("-@"):
-            drop_groups.append(line[2:])
+            name = line[2:]
+            if not name:
+                raise SystemExit(
+                    f"{kickstart}: empty drop-group in %packages: {line!r}"
+                )
+            drop_groups.append(name)
         elif line.startswith("-"):
-            if line[1:] not in KEEP:
-                remove.append(line[1:])
+            name = line[1:]
+            if not name:
+                raise SystemExit(f"{kickstart}: empty negation in %packages: {line!r}")
+            if name not in KEEP:
+                remove.append(name)
         elif line.startswith("@"):
             raise SystemExit(
                 f"unsupported group in %packages: {line!r} "
