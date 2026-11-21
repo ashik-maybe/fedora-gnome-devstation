@@ -76,6 +76,28 @@ runner_plan() {
 	return 0
 }
 
+# Print what one step would do. Never writes state or touches ROOT.
+runner_plan_one() {
+	local id=$1 i file
+	if ! _runner_find "$id"; then
+		state_log "ERROR step not found: $id"
+		return 1
+	fi
+	i=$_RUNNER_INDEX
+	file=${_RUNNER_STEPS[$i]}
+	_runner_load "$file" || {
+		state_log "ERROR cannot load $id"
+		return 1
+	}
+	state_log "PLAN $id:"
+	if declare -F step_plan >/dev/null 2>&1; then
+		step_plan
+	else
+		state_log "  apply $id"
+	fi
+	return 0
+}
+
 # Run exactly one step by id. Skips completed steps unless FORCE=1.
 # Writes the done marker only after step_run() succeeds.
 runner_run_one() {

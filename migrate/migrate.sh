@@ -184,12 +184,16 @@ runner_init
 # Errexit is off for dispatch: runner_* functions report failures explicitly
 # and migrate.sh maps them to exit 0 / 1 / 2.
 set +e
-if ((VERIFY_ONLY)); then
+if ((DRY_RUN)); then
+	if [[ -n "$STEP_ID" ]]; then
+		runner_plan_one "$STEP_ID"
+	else
+		runner_plan
+	fi
+elif ((VERIFY_ONLY)); then
 	runner_verify_all
 elif [[ -n "$STEP_ID" ]]; then
 	runner_run_one "$STEP_ID"
-elif ((DRY_RUN)); then
-	runner_plan
 else
 	runner_run_all
 fi

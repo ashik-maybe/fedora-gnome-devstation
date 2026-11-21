@@ -192,6 +192,20 @@ assert_no_file "$ROOTD/second.effect"
 assert_no_file "$ROOTD/third.effect"
 printf 'ok - --plan prints plans and writes no markers or effects\n'
 
+# --- 4b. --plan --step plans only that step, writes nothing -----------------
+new_case plan-step
+run_migrate --plan --step 10-second --state-dir "$STATE" --root "$ROOTD"
+assert_eq "$RC" 0
+assert_contains "$OUT" "PLAN 10-second:"
+assert_contains "$OUT" "apply 10-second"
+assert_not_contains "$OUT" "PLAN 00-first"
+assert_not_contains "$OUT" "PLAN 20-third"
+assert_not_contains "$OUT" "RUN 10-second"
+assert_not_contains "$OUT" "DONE 10-second"
+assert_no_file "$STATE/steps/10-second.done"
+assert_no_file "$ROOTD/second.effect"
+printf 'ok - --plan --step plans only that step and writes nothing\n'
+
 # --- 5. --verify checks markers, then the shared gate ----------------------
 new_case verify
 export THIRD_OK=1
