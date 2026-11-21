@@ -123,4 +123,34 @@ fi
 after=$(snapshot)
 [ "$before" = "$after" ] || fail "second step_run changed content"
 
+# DRY_RUN must not write outside STATE_DIR. Use a fresh ROOT so the
+# assertion is not satisfied by files from the earlier runs.
+DRY_ROOT="$WORK/dry-root"
+mkdir -p "$DRY_ROOT/etc/dnf"
+cat >"$DRY_ROOT/etc/dnf/automatic.conf" <<'EOF'
+apply_updates = no
+upgrade_type = default
+EOF
+DRY_STATE="$WORK/dry-state"
+mkdir -p "$DRY_STATE"
+(
+	export ROOT="$DRY_ROOT" STATE_DIR="$DRY_STATE" DRY_RUN=1
+	step_run
+) || fail "DRY_RUN step_run returned nonzero"
+if [ -e "$DRY_ROOT/etc/profile.d/90-devstation.sh" ] ||
+	[ -e "$DRY_ROOT/etc/dconf/profile/user" ] ||
+	[ -e "$DRY_ROOT/etc/dconf/db/local.d/00-devstation" ] ||
+	[ -e "$DRY_ROOT/etc/xdg/mimeapps.list" ] ||
+	[ -e "$DRY_ROOT/etc/yum.repos.d/google-chrome.repo" ] ||
+	[ -e "$DRY_ROOT/etc/yum.repos.d/helium-copr.repo" ]; then
+	fail "DRY_RUN wrote config files under ROOT"
+fi
+grep -q '^apply_updates = no$' "$DRY_ROOT/etc/dnf/automatic.conf" ||
+	fail "DRY_RUN modified dnf/automatic.conf"
+grep -q '^upgrade_type = default$' "$DRY_ROOT/etc/dnf/automatic.conf" ||
+	fail "DRY_RUN modified dnf/automatic.conf upgrade_type"
+if [ -n "$(find "$DRY_STATE" -type f -print -quit)" ]; then
+	fail "DRY_RUN wrote files under STATE_DIR"
+fi
+
 echo "PASS: test-config"

@@ -40,6 +40,7 @@ step_run() {
 		REPO_DIR=${REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/../.." && pwd)}
 		ROOT=${ROOT:-/}
 		STATE_DIR=${STATE_DIR:-/var/lib/gnome-devstation-migrate}
+		DRY_RUN=${DRY_RUN:-0}
 
 		# Progress goes through state_log when the runner provides it
 		# (migrate/lib/state.sh); standalone runs get a timestamped line.
@@ -59,6 +60,10 @@ step_run() {
 			if [ ! -f "$src" ]; then
 				state_log "missing source: $src"
 				return 1
+			fi
+			if [ "$DRY_RUN" = 1 ]; then
+				state_log "DRY RUN: would install $src -> $dest"
+				return 0
 			fi
 			if [ -f "$dest" ] && cmp -s "$src" "$dest"; then
 				chmod 0644 "$dest"
@@ -94,12 +99,15 @@ step_run() {
 		#    /etc/xdg/mimeapps.list; the Helium repo stays enabled so
 		#    it can be installed later without editing anything.
 		dest="$ROOT/etc/xdg/mimeapps.list"
-		mkdir -p "$STATE_DIR"
-		tmp=$(mktemp "$STATE_DIR/mimeapps.XXXXXX")
-		# The subshell's EXIT trap cleans the temp file up on both success
-		# and failure; nothing is left behind in STATE_DIR.
-		trap 'rm -f "$tmp"' EXIT
-		cat >"$tmp" <<'EOF'
+		if [ "$DRY_RUN" = 1 ]; then
+			state_log "DRY RUN: would write $dest"
+		else
+			mkdir -p "$STATE_DIR"
+			tmp=$(mktemp "$STATE_DIR/mimeapps.XXXXXX")
+			# The subshell's EXIT trap cleans the temp file up on both success
+			# and failure; nothing is left behind in STATE_DIR.
+			trap 'rm -f "$tmp"' EXIT
+			cat >"$tmp" <<'EOF'
 [Default Applications]
 x-scheme-handler/http=google-chrome.desktop
 x-scheme-handler/https=google-chrome.desktop
@@ -107,20 +115,25 @@ x-scheme-handler/about=google-chrome.desktop
 text/html=google-chrome.desktop
 application/xhtml+xml=google-chrome.desktop
 EOF
-		if [ ! -f "$dest" ] || ! cmp -s "$tmp" "$dest"; then
-			install -Dm0644 "$tmp" "$dest"
-		else
-			chmod 0644 "$dest"
+			if [ ! -f "$dest" ] || ! cmp -s "$tmp" "$dest"; then
+				install -Dm0644 "$tmp" "$dest"
+			else
+				chmod 0644 "$dest"
+			fi
+			cmp -s "$tmp" "$dest" || return 1
 		fi
-		cmp -s "$tmp" "$dest" || return 1
 
 		# 4. Security updates in the background (dnf-automatic). The
 		#    sed edits mirror the kickstart; `|| true` keeps the step
 		#    going when the file or the patterns are absent.
 		if [ -f "$ROOT/etc/dnf/automatic.conf" ]; then
-			sed -i -e 's/^apply_updates = no/apply_updates = yes/' \
-				-e 's/^upgrade_type = default/upgrade_type = security/' \
-				"$ROOT/etc/dnf/automatic.conf" || true
+			if [ "$DRY_RUN" = 1 ]; then
+				state_log "DRY RUN: would sed apply_updates=yes, upgrade_type=security in $ROOT/etc/dnf/automatic.conf"
+			else
+				sed -i -e 's/^apply_updates = no/apply_updates = yes/' \
+					-e 's/^upgrade_type = default/upgrade_type = security/' \
+					"$ROOT/etc/dnf/automatic.conf" || true
+			fi
 		fi
 
 		# 5. Enable the automatic timer. Live-system action, so it runs
@@ -129,20 +142,37 @@ EOF
 		#    to the live system.
 		if [ "$ROOT" = "/" ]; then
 			if [ -f "$ROOT/usr/lib/systemd/system/dnf5-automatic.timer" ]; then
-				systemctl enable dnf5-automatic.timer
+				if [ "$DRY_RUN" = 1 ]; then
+					state_log "DRY RUN: would systemctl enable dnf5-automatic.timer"
+				else
+					systemctl enable dnf5-automatic.timer
+				fi
 			elif [ -f "$ROOT/usr/lib/systemd/system/dnf-automatic.timer" ]; then
-				systemctl enable dnf-automatic.timer
+				if [ "$DRY_RUN" = 1 ]; then
+					state_log "DRY RUN: would systemctl enable dnf-automatic.timer"
+				else
+					systemctl enable dnf-automatic.timer
+				fi
 			fi
 		fi
 
 		# 6. Compile the system dconf database. Live-system action:
 		#    only when ROOT=/ and dconf is installed.
 		if [ "$ROOT" = "/" ] && command -v dconf >/dev/null 2>&1; then
-			dconf update
+			if [ "$DRY_RUN" = 1 ]; then
+				state_log "DRY RUN: would dconf update"
+			else
+				dconf update
+			fi
 		fi
 
 		# Final gate: every target is on disk and byte-identical to its
 		# source or expected content. Anything else fails the step.
+		if [ "$DRY_RUN" = 1 ]; then
+			state_log "DRY RUN: skipped install verification"
+			return 0
+		fi
+
 		cmp -s "$REPO_DIR/files/90-devstation.sh" \
 			"$ROOT/etc/profile.d/90-devstation.sh" || return 1
 		cmp -s "$REPO_DIR/files/dconf-profile-user" \
