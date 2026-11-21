@@ -567,8 +567,8 @@ firmware blobs) whose redistribution terms are not ours to grant.
   build and `fuse-libs` is missing. It is in the image; if you see this on a
   different machine, install `fuse-libs`.
 - **No network after install** — check `ip link` and `nmcli device status`. The
-  image carries every wireless firmware package, so a missing blob is not the
-  usual cause; a regulatory-domain problem is. `sudo fwupdmgr refresh &&
+  image carries firmware for common wireless hardware, so a missing blob is
+  not the usual cause; a regulatory-domain problem is. `sudo fwupdmgr refresh &&
   sudo fwupdmgr update` sometimes fixes a stale `wireless-regdb`.
 - **NVIDIA black screen** — `akmod-nvidia` builds at install time. If the build
   failed, the install still succeeded and you get nouveau. Rebuild with
